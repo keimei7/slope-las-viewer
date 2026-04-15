@@ -288,17 +288,16 @@ export default function LasViewer() {
     return distance3D(startPoint, endPoint);
   }, [startPoint, endPoint]);
 
-  const tapePoints = useMemo(() => {
-    return computeTapeSamplePoints(
-      displayPoints,
-      startPoint,
-      endPoint,
-      divisionCount,
-      searchRadius,
-      sliceWidth,
-    );
-  }, [displayPoints, startPoint, endPoint, divisionCount, searchRadius, sliceWidth]);
-
+ const tapePoints = useMemo(() => {
+  return computeTapeSamplePoints(
+    points,
+    startPoint,
+    endPoint,
+    divisionCount,
+    searchRadius,
+    sliceWidth,
+  );
+}, [points, startPoint, endPoint, divisionCount, searchRadius, sliceWidth]);
   const tapeDistance = useMemo(() => {
     if (tapePoints.length < 2) return null;
 
