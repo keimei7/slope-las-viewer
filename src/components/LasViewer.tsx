@@ -124,8 +124,8 @@ export default function LasViewer() {
   const [focusWidth, setFocusWidth] = useState(6);
 
   const [divisionCount, setDivisionCount] = useState(8);
- const [searchRadius, setSearchRadius] = useState(0.1);
-const [isPinned, setIsPinned] = useState(false);
+  const [searchRadius, setSearchRadius] = useState(0.1);
+  const [isPinned, setIsPinned] = useState(false);
 
   const displayPoints = useMemo(() => {
     if (points.length <= maxDisplayPoints) {
@@ -197,22 +197,28 @@ const [isPinned, setIsPinned] = useState(false);
     return total;
   }, [tapePoints]);
 
- function handlePick(point: PickedPoint) {
-  if (isPinned) return;
+  function handlePick(point: PickedPoint) {
+    if (isPinned) return;
 
-  if (!startPoint || endPoint) {
-    setStartPoint(point);
-    setEndPoint(null);
-    return;
+    if (!startPoint || endPoint) {
+      setStartPoint(point);
+      setEndPoint(null);
+      return;
+    }
+
+    setEndPoint(point);
   }
 
-  setEndPoint(point);
-}
-function clearPickedPoints() {
-  setStartPoint(null);
-  setEndPoint(null);
-  setIsPinned(false);
-}
+  function clearPickedPoints() {
+    setStartPoint(null);
+    setEndPoint(null);
+    setIsPinned(false);
+  }
+
+  function resetMeasuredPointsOnly() {
+    setStartPoint(null);
+    setEndPoint(null);
+  }
 
   function resetCamera(nextMode?: ViewMode) {
     if (nextMode) {
@@ -228,8 +234,6 @@ function clearPickedPoints() {
     setStatus("loading");
     setErrorMessage("");
     setFileName(file.name);
-    setStartPoint(null);
-    setEndPoint(null);
 
     try {
       const buffer = await file.arrayBuffer();
@@ -318,20 +322,35 @@ function clearPickedPoints() {
             </div>
           </div>
 
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={clearPickedPoints}
+              className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-slate-100 hover:bg-white/10"
+            >
+              点をクリア
+            </button>
+
+            <button
+              type="button"
+              onClick={resetMeasuredPointsOnly}
+              className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-slate-100 hover:bg-white/10"
+            >
+              測点リセット
+            </button>
+          </div>
+
           <button
-            type="button"
-            onClick={clearPickedPoints}
-            className="mt-3 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-slate-100 hover:bg-white/10"
-          >
-            点をクリア
-          </button>
-                    <button
             type="button"
             onClick={() => setIsPinned((prev) => !prev)}
             className="mt-2 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-slate-100 hover:bg-white/10"
           >
             {isPinned ? "ピン留め解除" : "この2点をピン留め"}
           </button>
+
+          <div className="mt-2 text-xs text-slate-400">
+            ピン状態: {isPinned ? "固定中" : "未固定"}
+          </div>
         </div>
 
         <div className="mt-4 rounded-xl border border-white/10 bg-black/15 p-3">
@@ -345,9 +364,9 @@ function clearPickedPoints() {
             </label>
             <input
               type="range"
-             min={2}
-max={20}
-step={1}
+              min={2}
+              max={20}
+              step={1}
               value={divisionCount}
               onChange={(e) => setDivisionCount(Number(e.target.value))}
               className="mt-1 w-full"
@@ -356,13 +375,13 @@ step={1}
 
           <div className="mt-3">
             <label className="block text-xs text-slate-300">
-  近傍探索半径: {(searchRadius * 100).toFixed(0)} cm
-</label>
+              近傍探索半径: {(searchRadius * 100).toFixed(0)} cm
+            </label>
             <input
               type="range"
-            min={0.01}
-max={1}
-step={0.01}
+              min={0.01}
+              max={1}
+              step={0.01}
               value={searchRadius}
               onChange={(e) => setSearchRadius(Number(e.target.value))}
               className="mt-1 w-full"
@@ -415,9 +434,9 @@ step={0.01}
             </label>
             <input
               type="range"
-            min={0.001}
-max={0.05}
-step={0.001}
+              min={0.001}
+              max={0.05}
+              step={0.001}
               value={pointSize}
               onChange={(e) => setPointSize(Number(e.target.value))}
               className="mt-1 w-full"
