@@ -253,26 +253,27 @@ function CameraRig({
   );
 
   const bounds = useMemo(() => computeBounds(points), [points]);
+useEffect(() => {
+  const controls = controlsRef.current;
+  if (!controls || points.length === 0) return;
 
-  useEffect(() => {
-    const controls = controlsRef.current;
-    if (!controls || points.length === 0) return;
+  const maxSpan = Math.max(bounds.sx, bounds.sy, bounds.sz * zScale, 1);
 
-    const maxSpan = Math.max(bounds.sx, bounds.sy, bounds.sz * zScale, 1);
-    controls.target.set(0, 0, 0);
+  controls.object.up.set(0, 0, 1);
+  controls.target.set(0, 0, 0);
 
-    if (viewMode === "top") {
-      controls.object.position.set(0, 0, maxSpan * 1.8);
-      controls.enableRotate = false;
-    } else {
-      controls.object.position.set(maxSpan * 1.0, -maxSpan * 1.0, maxSpan * 0.75);
-      controls.enableRotate = true;
-    }
+  if (viewMode === "top") {
+    controls.object.position.set(0, 0, maxSpan * 1.8);
+    controls.enableRotate = false;
+  } else {
+    controls.object.position.set(maxSpan * 1.0, -maxSpan * 1.0, maxSpan * 0.75);
+    controls.enableRotate = true;
+  }
 
-    controls.enablePan = true;
-    controls.enableZoom = true;
-    controls.update();
-  }, [bounds, points.length, viewMode, viewResetKey, zScale]);
+  controls.enablePan = true;
+  controls.enableZoom = true;
+  controls.update();
+}, [bounds, points.length, viewMode, viewResetKey, zScale]);
 
   return (
     <OrbitControls
@@ -324,7 +325,10 @@ export default function PointCloudCanvas({
         <ambientLight intensity={0.65} />
         <directionalLight position={[200, -100, 300]} intensity={0.55} />
 
-        <gridHelper args={[gridSize, 40, "#1e293b", "#0f172a"]} />
+       <gridHelper
+  args={[gridSize, 40, "#1e293b", "#0f172a"]}
+  rotation={[Math.PI / 2, 0, 0]}
+/>
 
         <PointCloud
           points={points}
