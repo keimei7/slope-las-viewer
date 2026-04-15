@@ -75,10 +75,7 @@ function pointToSegmentMetrics2D(
   if (abLenSq === 0) {
     const dx = px - ax;
     const dy = py - ay;
-    return {
-      distance: Math.sqrt(dx * dx + dy * dy),
-      t: 0,
-    };
+    return { distance: Math.sqrt(dx * dx + dy * dy), t: 0 };
   }
 
   let t = (apx * abx + apy * aby) / abLenSq;
@@ -178,12 +175,12 @@ function PointCloud({
   return (
     <points
       geometry={geometry}
-      onClick={(e) => {
-        e.stopPropagation();
+      onClick={(event) => {
+        event.stopPropagation();
         onPick({
-          x: e.point.x + bounds.cx,
-          y: e.point.y + bounds.cy,
-          z: e.point.z / zScale + bounds.cz,
+          x: event.point.x + bounds.cx,
+          y: event.point.y + bounds.cy,
+          z: event.point.z / zScale + bounds.cz,
         });
       }}
     >
