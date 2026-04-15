@@ -35,7 +35,7 @@ function PointCloud({ points, onPick }: any) {
 }
 
 function CameraFit({ points }: { points: Point3[] }) {
-  const ref = useRef<any>();
+  const ref = useRef<React.ElementRef<typeof OrbitControls>>(null);
 
   useEffect(() => {
     if (!points.length || !ref.current) return;
