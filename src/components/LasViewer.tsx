@@ -98,12 +98,13 @@ function computeTapeSamplePoints(
     const targetY = ay + uy * targetAlong;
     const targetZ = az + ((bz - az) * i) / divisionCount;
 
-    const candidates: Array<{
-      point: Point3;
-      alongError: number;
-      perpDist: number;
-      score: number;
-    }> = [];
+  const candidates: Array<{
+  point: Point3;
+  alongError: number;
+  perpDist: number;
+  targetZError: number;
+  score: number;
+}> = [];
 
     for (const p of sourcePoints) {
       const px = p.x - ax;
@@ -119,13 +120,16 @@ function computeTapeSamplePoints(
       if (alongError > alongWindow) continue;
       if (perpDist > sliceWidth) continue;
 
-      const score = perpDist * 0.8 + alongError * 0.2;
-      candidates.push({
-        point: p,
-        alongError,
-        perpDist,
-        score,
-      });
+      const targetZError = Math.abs(p.z - targetZ);
+const score = perpDist * 0.7 + alongError * 0.15 + targetZError * 0.15;
+
+candidates.push({
+  point: p,
+  alongError,
+  perpDist,
+  targetZError,
+  score,
+});
     }
 
     if (candidates.length === 0) {
@@ -159,17 +163,50 @@ function computeTapeSamplePoints(
       continue;
     }
 
-    candidates.sort((a, b) => a.score - b.score);
-    const top = candidates.slice(0, Math.min(candidates.length, 9));
+   candidates.sort((a, b) => a.score - b.score);
+const top = candidates.slice(0, Math.min(candidates.length, 8));
 
-    const sortedZ = [...top].sort((a, b) => a.point.z - b.point.z);
-    const median = sortedZ[Math.floor(sortedZ.length / 2)];
+let chosen = top[0];
 
-    samples.push({
-      x: median.point.x,
-      y: median.point.y,
-      z: median.point.z,
-    });
+if (top.length > 1) {
+  const prevSample = samples.length > 0 ? samples[samples.length - 1] : null;
+  const prevPrevSample = samples.length > 1 ? samples[samples.length - 2] : null;
+
+  let bestContinuityScore = Number.POSITIVE_INFINITY;
+
+  for (const candidate of top) {
+    let continuityPenalty = 0;
+
+    if (prevSample) {
+      const dz = candidate.point.z - prevSample.z;
+      continuityPenalty += Math.abs(dz) * 2.0;
+
+      const dx = candidate.point.x - prevSample.x;
+      const dy = candidate.point.y - prevSample.y;
+      const stepDist = Math.sqrt(dx * dx + dy * dy);
+      continuityPenalty += Math.abs(stepDist - step) * 0.8;
+    }
+
+    if (prevSample && prevPrevSample) {
+      const prevDz = prevSample.z - prevPrevSample.z;
+      const currentDz = candidate.point.z - prevSample.z;
+      continuityPenalty += Math.abs(currentDz - prevDz) * 3.0;
+    }
+
+    const totalScore = candidate.score + continuityPenalty;
+
+    if (totalScore < bestContinuityScore) {
+      bestContinuityScore = totalScore;
+      chosen = candidate;
+    }
+  }
+}
+
+samples.push({
+  x: chosen.point.x,
+  y: chosen.point.y,
+  z: chosen.point.z,
+});
   }
 
   return samples;
