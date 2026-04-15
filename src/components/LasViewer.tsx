@@ -49,10 +49,15 @@ export default function LasViewer() {
   const [endPoint, setEndPoint] = useState<PickedPoint | null>(null);
 
   // 🔥 表示用に間引き
-  const displayPoints = useMemo(() => {
-    if (points.length <= 300000) return points;
+    const [maxDisplayPoints, setMaxDisplayPoints] = useState(200000);
+  const [zScale, setZScale] = useState(1.5);
 
-    const step = Math.ceil(points.length / 300000);
+  const displayPoints = useMemo(() => {
+    if (points.length <= maxDisplayPoints) {
+      return points;
+    }
+
+    const step = Math.ceil(points.length / maxDisplayPoints);
     const sampled: Point3[] = [];
 
     for (let i = 0; i < points.length; i += step) {
@@ -60,7 +65,7 @@ export default function LasViewer() {
     }
 
     return sampled;
-  }, [points]);
+  }, [points, maxDisplayPoints]);
 
   const stats = useMemo(() => {
     if (points.length === 0) return null;
@@ -126,7 +131,7 @@ export default function LasViewer() {
   }
 
   return (
-    <div className="grid grid-cols-[320px_1fr] min-h-screen">
+      <div className="grid min-h-screen grid-cols-[280px_1fr] bg-slate-100">
       <aside className="p-4 border-r bg-white text-sm">
         <h1 className="text-xl font-bold">LAS Viewer</h1>
 
@@ -146,12 +151,50 @@ export default function LasViewer() {
           </div>
         )}
       </aside>
+              <div className="mt-4 space-y-3 rounded-xl border border-slate-300 p-3">
+          <div className="font-medium">表示設定</div>
 
-      <PointCloudCanvas
+          <div>
+            <label className="block text-xs text-slate-600">
+              表示点数上限: {maxDisplayPoints.toLocaleString()}
+            </label>
+            <input
+              type="range"
+              min={50000}
+              max={500000}
+              step={50000}
+              value={maxDisplayPoints}
+              onChange={(e) => setMaxDisplayPoints(Number(e.target.value))}
+              className="w-full"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs text-slate-600">
+              Z誇張: {zScale.toFixed(1)}x
+            </label>
+            <input
+              type="range"
+              min={0.5}
+              max={5}
+              step={0.1}
+              value={zScale}
+              onChange={(e) => setZScale(Number(e.target.value))}
+              className="w-full"
+            />
+          </div>
+
+          <div className="text-xs text-slate-500">
+            表示中: {displayPoints.length.toLocaleString()} 点
+          </div>
+        </div>
+
+           <PointCloudCanvas
         points={displayPoints}
         startPoint={startPoint}
         endPoint={endPoint}
         onPickPoint={handlePick}
+        zScale={zScale}
       />
     </div>
   );
