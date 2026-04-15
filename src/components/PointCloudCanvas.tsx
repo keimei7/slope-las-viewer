@@ -8,6 +8,12 @@ import type { PickedPoint, Point3 } from "./LasViewer";
 
 type ViewMode = "top" | "angled";
 
+type SavedLine = {
+  start: PickedPoint;
+  end: PickedPoint;
+  tapePoints: PickedPoint[];
+};
+
 function computeBounds(points: Point3[]) {
   if (points.length === 0) {
     return {
@@ -133,7 +139,7 @@ function PointCloud({
       let b = 0.9;
 
       if (useLine && startPoint && endPoint) {
-        const { distance, t } = pointToSegmentMetrics2D(
+        const { distance } = pointToSegmentMetrics2D(
           p.x,
           p.y,
           startPoint.x,
@@ -142,15 +148,14 @@ function PointCloud({
           endPoint.y,
         );
 
-        const withinSegment = t >= 0 && t <= 1;
         const withinSlice = distance <= sliceWidth;
         const withinFocus = distance <= focusWidth;
 
-        if (withinSegment && withinSlice) {
+        if (withinSlice) {
           r = 1.0;
           gCol = 0.78;
           b = 0.35;
-        } else if (withinSegment && withinFocus) {
+        } else if (withinFocus) {
           r = 0.92;
           gCol = 0.96;
           b = 1.0;
@@ -177,10 +182,16 @@ function PointCloud({
       geometry={geometry}
       onClick={(event) => {
         event.stopPropagation();
+
+        if (typeof event.index !== "number") return;
+
+        const picked = points[event.index];
+        if (!picked) return;
+
         onPick({
-          x: event.point.x + bounds.cx,
-          y: event.point.y + bounds.cy,
-          z: event.point.z / zScale + bounds.cz,
+          x: picked.x,
+          y: picked.y,
+          z: picked.z,
         });
       }}
     >
@@ -396,7 +407,11 @@ function CameraRig({
       controls.object.position.set(0, 0, maxSpan * 1.8);
       controls.enableRotate = false;
     } else {
-      controls.object.position.set(maxSpan * 1.0, -maxSpan * 1.0, maxSpan * 0.75);
+      controls.object.position.set(
+        maxSpan * 1.0,
+        -maxSpan * 1.0,
+        maxSpan * 0.75,
+      );
       controls.enableRotate = true;
     }
 
@@ -430,6 +445,7 @@ export default function PointCloudCanvas({
   focusWidth,
   sliceWidth,
   tapePoints,
+  savedLines: _savedLines,
 }: {
   points: Point3[];
   startPoint: PickedPoint | null;
@@ -442,6 +458,7 @@ export default function PointCloudCanvas({
   focusWidth: number;
   sliceWidth: number;
   tapePoints: PickedPoint[];
+  savedLines: SavedLine[];
 }) {
   const bounds = useMemo(() => computeBounds(points), [points]);
   const gridSize = useMemo(
