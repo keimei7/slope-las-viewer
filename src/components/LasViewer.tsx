@@ -140,7 +140,7 @@ candidates.push({
         const ddx = p.x - targetX;
         const ddy = p.y - targetY;
         const distSq = ddx * ddx + ddy * ddy;
-        if (distSq < bestDistSq && distSq <= searchRadius * searchRadius) {
+        if (distSq < bestDistSq && distSq <= sliceWidth * sliceWidth) {
           fallback = p;
           bestDistSq = distSq;
         }
@@ -560,7 +560,7 @@ export default function LasViewer() {
                   type="range"
                   min={0.005}
 max={0.05}
-step={0.005}
+step={0.0025}
                   value={searchRadius}
                   onChange={(e) =>
   setSearchRadius(clamp(Number(e.target.value), 0.005, 0.05))
