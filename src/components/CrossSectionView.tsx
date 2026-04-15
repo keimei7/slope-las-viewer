@@ -78,7 +78,28 @@ function buildCrossSectionTape(
     };
   });
 }
+function computeArea(section: SectionPoint[]) {
+  if (section.length < 2) return 0;
 
+  const sorted = [...section].sort((a, b) => a.along - b.along);
+  const baseZ = Math.min(...sorted.map((p) => p.z));
+
+  let area = 0;
+
+  for (let i = 1; i < sorted.length; i++) {
+    const a = sorted[i - 1];
+    const b = sorted[i];
+
+    const width = Math.abs(b.along - a.along);
+    const ah = a.z - baseZ;
+    const bh = b.z - baseZ;
+    const avgHeight = (ah + bh) / 2;
+
+    area += width * avgHeight;
+  }
+
+  return area;
+}
 export default function CrossSectionView({
   cloudPoints,
   tapePoints,
@@ -164,6 +185,9 @@ export default function CrossSectionView({
     );
     return height - padY - t * innerH;
   }
+  const sectionArea = useMemo(() => {
+    return computeArea(tapeSection);
+  }, [tapeSection]);
 
   const tapePath =
     tapeSection.length > 0
@@ -233,7 +257,9 @@ export default function CrossSectionView({
         <text x={padX} y={18} fill="#cbd5e1" fontSize="13">
           スライス幅 {(sliceWidth * 100).toFixed(0)}cm
         </text>
-
+        <text x={padX + 170} y={18} fill="#fcd34d" fontSize="13">
+          面積 {sectionArea.toFixed(2)}m²
+        </text>
         <text x={padX} y={height - 6} fill="#64748b" fontSize="11">
           along
         </text>

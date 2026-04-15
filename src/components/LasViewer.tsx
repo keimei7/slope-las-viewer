@@ -68,7 +68,6 @@ function isSamePoint(a: PickedPoint | null, b: PickedPoint | null, eps = 1e-9) {
     Math.abs(a.z - b.z) < eps
   );
 }
-
 function formatLength(valueMeters: number, unit: LengthUnit) {
   if (unit === "mm") {
     return `${Math.round(valueMeters * 1000)}mm`;
@@ -173,6 +172,44 @@ export default function LasViewer() {
     return total;
   }, [tapePoints]);
 
+   function snapToDirectionalPoint(
+    target: PickedPoint,
+    source: Point3[],
+    radius: number,
+    prev: PickedPoint | null,
+  ): PickedPoint | null {
+    let best: Point3 | null = null;
+    let bestScore = Infinity;
+
+    for (const p of source) {
+      const dx = p.x - target.x;
+      const dy = p.y - target.y;
+      const dist = dx * dx + dy * dy;
+
+      if (dist > radius * radius) continue;
+
+      if (prev) {
+        const dirX = target.x - prev.x;
+        const dirY = target.y - prev.y;
+        const dot = dx * dirX + dy * dirY;
+        if (dot < 0) continue;
+      }
+
+      if (dist < bestScore) {
+        best = p;
+        bestScore = dist;
+      }
+    }
+
+    if (!best) return null;
+
+    return {
+      x: best.x,
+      y: best.y,
+      z: best.z,
+    };
+  }
+
   function handlePick(point: PickedPoint) {
     if (isPinned) return;
 
@@ -184,23 +221,45 @@ export default function LasViewer() {
       return;
     }
 
-    // 2点目 = 終点
-    if (!endPoint) {
-      if (isSamePoint(startPoint, point)) return;
-      setEndPoint(point);
+    // 終点確定済みなら、新しい測線を開始
+    if (endPoint) {
+      setStartPoint(point);
+      setEndPoint(null);
       setManualPoints([]);
+      setIsPinned(false);
       return;
     }
 
-    // 3点目以降 = 手動沿わせ点（終点の手前に追加）
-    const lastReference =
-      manualPoints.length > 0 ? manualPoints[manualPoints.length - 1] : startPoint;
+    // 手動沿わせ点を追加
+    const prev =
+      manualPoints.length > 0
+        ? manualPoints[manualPoints.length - 1]
+        : startPoint;
 
-    if (isSamePoint(lastReference, point) || isSamePoint(endPoint, point)) {
-      return;
-    }
+    const snapped = snapToDirectionalPoint(
+      point,
+      displayPoints,
+      searchRadius,
+      prev,
+    );
 
-    setManualPoints((prev) => [...prev, point]);
+    if (!snapped) return;
+    if (isSamePoint(prev, snapped)) return;
+
+    setManualPoints((p) => [...p, snapped]);
+  }
+
+  function finalizeEndPoint() {
+    if (!startPoint) return;
+    if (manualPoints.length === 0) return;
+
+    const nextEnd = manualPoints[manualPoints.length - 1];
+    const nextManual = manualPoints.slice(0, -1);
+
+    if (isSamePoint(startPoint, nextEnd)) return;
+
+    setEndPoint(nextEnd);
+    setManualPoints(nextManual);
   }
 
   function undoLastPoint() {
@@ -233,7 +292,7 @@ export default function LasViewer() {
     setEndPoint(null);
     setManualPoints([]);
   }
-
+  
   function resetCamera(nextMode?: ViewMode) {
     if (nextMode) {
       setViewMode(nextMode);
@@ -480,7 +539,16 @@ export default function LasViewer() {
                 </button>
               </div>
 
-              <div className="mt-3 flex flex-wrap gap-2">
+                          <div className="mt-3 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={finalizeEndPoint}
+                  disabled={!startPoint || manualPoints.length === 0 || !!endPoint}
+                  className="rounded-lg border border-white/10 bg-cyan-500/15 px-3 py-1.5 text-sm text-cyan-50 hover:bg-cyan-500/25 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  最後の点を終点にする
+                </button>
+
                 <button
                   type="button"
                   onClick={() => setIsPinned((prev) => !prev)}
@@ -488,14 +556,6 @@ export default function LasViewer() {
                 >
                   {isPinned ? "ピン留め解除" : "この測線をピン留め"}
                 </button>
-              </div>
-
-              <div className="mt-2 text-xs text-slate-400">
-                入力方式: 始点 → 終点 → その後は終点の手前に手動沿わせ点を追加
-              </div>
-
-              <div className="mt-1 text-xs text-slate-400">
-                ピン状態: {isPinned ? "固定中" : "未固定"}
               </div>
             </div>
 

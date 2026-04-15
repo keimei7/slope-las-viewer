@@ -62,9 +62,14 @@ function PointCloud({
   bounds,
   zScale,
   pointSize,
-  pickRadius,
   onPick,
-}: any) {
+}: {
+  points: Point3[];
+  bounds: any;
+  zScale: number;
+  pointSize: number;
+  onPick: (p: PickedPoint) => void;
+}) {
   const geometry = useMemo(() => {
     const g = new THREE.BufferGeometry();
     const positions = new Float32Array(points.length * 3);
@@ -96,16 +101,32 @@ function PointCloud({
         });
       }}
     >
-      <pointsMaterial size={pointSize} sizeAttenuation={false} />
+      <pointsMaterial
+        size={pointSize}
+        sizeAttenuation={false}
+        alphaTest={0.5}
+      />
     </points>
   );
 }
 
 /* =========================
-   Markers
+   Marker
 ========================= */
 
-function Marker({ point, color, bounds, zScale, size = 0.12 }: any) {
+function Marker({
+  point,
+  color,
+  bounds,
+  zScale,
+  size = 0.12,
+}: {
+  point: PickedPoint;
+  color: string;
+  bounds: any;
+  zScale: number;
+  size?: number;
+}) {
   return (
     <mesh
       position={[
@@ -124,12 +145,20 @@ function Marker({ point, color, bounds, zScale, size = 0.12 }: any) {
    Tape Line
 ========================= */
 
-function TapeLine({ points, bounds, zScale }: any) {
+function TapeLine({
+  points,
+  bounds,
+  zScale,
+}: {
+  points: PickedPoint[];
+  bounds: any;
+  zScale: number;
+}) {
   if (points.length < 2) return null;
 
   return (
     <Line
-      points={points.map((p: PickedPoint) => [
+      points={points.map((p) => [
         p.x - bounds.cx,
         p.y - bounds.cy,
         (p.z - bounds.cz) * zScale,
@@ -200,7 +229,7 @@ function LengthLabels({
    Camera
 ========================= */
 
-function CameraRig({ bounds, viewMode }: any) {
+function CameraRig({ viewMode }: { viewMode: ViewMode }) {
   const ref = useRef<any>(null);
 
   return (
@@ -222,12 +251,11 @@ export default function PointCloudCanvas({
   endPoint,
   manualPoints,
   tapePoints,
+  snappedPreviewPoint,
   onPickPoint,
   zScale,
   pointSize,
   viewMode,
-  focusWidth,
-  sliceWidth,
   pickRadius,
   lengthUnit,
 }: any) {
@@ -235,7 +263,11 @@ export default function PointCloudCanvas({
 
   return (
     <main className="absolute inset-0">
-      <Canvas>
+      <Canvas
+        onCreated={({ raycaster }) => {
+          raycaster.params.Points.threshold = pickRadius;
+        }}
+      >
         <ambientLight intensity={0.6} />
 
         <PointCloud
@@ -243,24 +275,46 @@ export default function PointCloudCanvas({
           bounds={bounds}
           zScale={zScale}
           pointSize={pointSize}
-          pickRadius={pickRadius}
           onPick={onPickPoint}
         />
 
+        {/* 始点 */}
         {startPoint && (
           <Marker point={startPoint} color="#ef4444" bounds={bounds} zScale={zScale} />
         )}
 
+        {/* 終点 */}
         {endPoint && (
           <Marker point={endPoint} color="#3b82f6" bounds={bounds} zScale={zScale} />
         )}
 
+        {/* 手動点 */}
         {manualPoints.map((p: any, i: number) => (
-          <Marker key={i} point={p} color="#f59e0b" bounds={bounds} zScale={zScale} size={0.08} />
+          <Marker
+            key={i}
+            point={p}
+            color="#f59e0b"
+            bounds={bounds}
+            zScale={zScale}
+            size={0.08}
+          />
         ))}
 
+        {/* スナッププレビュー */}
+        {snappedPreviewPoint && (
+          <Marker
+            point={snappedPreviewPoint}
+            color="#22c55e"
+            bounds={bounds}
+            zScale={zScale}
+            size={0.1}
+          />
+        )}
+
+        {/* ライン */}
         <TapeLine points={tapePoints} bounds={bounds} zScale={zScale} />
 
+        {/* ラベル */}
         <LengthLabels
           startPoint={startPoint}
           endPoint={endPoint}
@@ -270,7 +324,7 @@ export default function PointCloudCanvas({
           lengthUnit={lengthUnit}
         />
 
-        <CameraRig bounds={bounds} viewMode={viewMode} />
+        <CameraRig viewMode={viewMode} />
       </Canvas>
     </main>
   );
