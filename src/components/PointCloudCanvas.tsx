@@ -200,7 +200,7 @@ function Marker({
         (point.z - bounds.cz) * zScale,
       ]}
     >
-      <sphereGeometry args={[0.6, 16, 16]} />
+      <sphereGeometry args={[0.12, 12, 12]} />
       <meshBasicMaterial color={color} />
     </mesh>
   );
@@ -232,7 +232,7 @@ function PickLine({
         ],
       ]}
       color="#38bdf8"
-      lineWidth={1.5}
+      lineWidth={0.9}
     />
   );
 }
@@ -256,7 +256,7 @@ function TapeLine({
         (p.z - bounds.cz) * zScale,
       ])}
       color="#f59e0b"
-      lineWidth={2.5}
+      lineWidth={1.2}
     />
   );
 }
@@ -277,7 +277,7 @@ function TapeMarkers({
           key={`${p.x}-${p.y}-${p.z}-${index}`}
           position={[p.x - bounds.cx, p.y - bounds.cy, (p.z - bounds.cz) * zScale]}
         >
-          <sphereGeometry args={[0.28, 12, 12]} />
+          <sphereGeometry args={[0.05, 10, 10]} />
           <meshBasicMaterial color="#f59e0b" />
         </mesh>
       ))}
@@ -370,7 +370,7 @@ export default function PointCloudCanvas({
         camera={{ position: [0, 0, 200], fov: 40, near: 0.1, far: 200000 }}
         onCreated={({ gl, raycaster }) => {
           gl.setClearColor("#020617");
-          raycaster.params.Points = { threshold: 1.5 };
+          raycaster.params.Points = { threshold: 0.35 };
         }}
       >
         <ambientLight intensity={0.65} />
