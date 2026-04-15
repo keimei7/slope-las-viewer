@@ -563,8 +563,8 @@ max={0.05}
 step={0.005}
                   value={searchRadius}
                   onChange={(e) =>
-                    setSearchRadius(clamp(Number(e.target.value), 0.01, 1))
-                  }
+  setSearchRadius(clamp(Number(e.target.value), 0.005, 0.05))
+}
                   className="mt-1 w-full"
                 />
               </div>
@@ -579,9 +579,9 @@ step={0.005}
 max={0.1}
 step={0.005}
                   value={sliceWidth}
-                  onChange={(e) =>
-                    setSliceWidth(clamp(Number(e.target.value), 0.01, 1))
-                  }
+                 onChange={(e) =>
+  setSliceWidth(clamp(Number(e.target.value), 0.01, 0.1))
+}
                   className="mt-1 w-full"
                 />
               </div>
@@ -784,12 +784,12 @@ step={0.005}
 
                 <div className="mt-3 h-[360px] rounded-lg border border-white/10 bg-slate-950/70 p-2">
                   <CrossSectionView
-                    cloudPoints={displayPoints}
-                    tapePoints={tapePoints}
-                    startPoint={startPoint}
-                    endPoint={endPoint}
-                    sliceWidth={sliceWidth}
-                  />
+  cloudPoints={points}
+  tapePoints={tapePoints}
+  startPoint={startPoint}
+  endPoint={endPoint}
+  sliceWidth={sliceWidth}
+/>
                 </div>
               </div>
             </div>
