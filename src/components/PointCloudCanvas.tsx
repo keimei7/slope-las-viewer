@@ -225,7 +225,7 @@ function Marker({
         (point.z - bounds.cz) * zScale,
       ]}
     >
-      <sphereGeometry args={[0.12, 12, 12]} />
+      <sphereGeometry args={[0.05, 10, 10]} />
       <meshBasicMaterial color={color} />
     </mesh>
   );
@@ -306,7 +306,7 @@ function TapeMarkers({
             (p.z - bounds.cz) * zScale,
           ]}
         >
-          <sphereGeometry args={[0.05, 10, 10]} />
+        <sphereGeometry args={[0.03, 8, 8]} />
           <meshBasicMaterial color="#f59e0b" />
         </mesh>
       ))}
@@ -471,10 +471,10 @@ export default function PointCloudCanvas({
       <Canvas
         className="h-full w-full"
         camera={{ position: [0, 0, 200], fov: 40, near: 0.1, far: 200000 }}
-        onCreated={({ gl, raycaster }) => {
-          gl.setClearColor("#020617");
-          raycaster.params.Points = { threshold: 0.35 };
-        }}
+      onCreated={({ gl, raycaster }) => {
+  gl.setClearColor("#020617");
+  raycaster.params.Points = { threshold: 0.05 };
+}}
       >
         <ambientLight intensity={0.65} />
         <directionalLight position={[200, -100, 300]} intensity={0.55} />
