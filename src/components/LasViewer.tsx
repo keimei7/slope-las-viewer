@@ -118,13 +118,14 @@ export default function LasViewer() {
 
   const [maxDisplayPoints, setMaxDisplayPoints] = useState(200000);
   const [zScale, setZScale] = useState(2);
-  const [pointSize, setPointSize] = useState(0.04);
+  const [pointSize, setPointSize] = useState(0.008);
   const [viewMode, setViewMode] = useState<ViewMode>("top");
   const [viewResetKey, setViewResetKey] = useState(0);
   const [focusWidth, setFocusWidth] = useState(6);
 
-  const [divisionCount, setDivisionCount] = useState(12);
-  const [searchRadius, setSearchRadius] = useState(2);
+  const [divisionCount, setDivisionCount] = useState(8);
+ const [searchRadius, setSearchRadius] = useState(0.1);
+const [isPinned, setIsPinned] = useState(false);
 
   const displayPoints = useMemo(() => {
     if (points.length <= maxDisplayPoints) {
@@ -196,20 +197,22 @@ export default function LasViewer() {
     return total;
   }, [tapePoints]);
 
-  function handlePick(point: PickedPoint) {
-    if (!startPoint || endPoint) {
-      setStartPoint(point);
-      setEndPoint(null);
-      return;
-    }
+ function handlePick(point: PickedPoint) {
+  if (isPinned) return;
 
-    setEndPoint(point);
-  }
-
-  function clearPickedPoints() {
-    setStartPoint(null);
+  if (!startPoint || endPoint) {
+    setStartPoint(point);
     setEndPoint(null);
+    return;
   }
+
+  setEndPoint(point);
+}
+function clearPickedPoints() {
+  setStartPoint(null);
+  setEndPoint(null);
+  setIsPinned(false);
+}
 
   function resetCamera(nextMode?: ViewMode) {
     if (nextMode) {
@@ -322,6 +325,13 @@ export default function LasViewer() {
           >
             点をクリア
           </button>
+                    <button
+            type="button"
+            onClick={() => setIsPinned((prev) => !prev)}
+            className="mt-2 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-slate-100 hover:bg-white/10"
+          >
+            {isPinned ? "ピン留め解除" : "この2点をピン留め"}
+          </button>
         </div>
 
         <div className="mt-4 rounded-xl border border-white/10 bg-black/15 p-3">
@@ -335,9 +345,9 @@ export default function LasViewer() {
             </label>
             <input
               type="range"
-              min={2}
-              max={60}
-              step={1}
+             min={2}
+max={20}
+step={1}
               value={divisionCount}
               onChange={(e) => setDivisionCount(Number(e.target.value))}
               className="mt-1 w-full"
@@ -346,13 +356,13 @@ export default function LasViewer() {
 
           <div className="mt-3">
             <label className="block text-xs text-slate-300">
-              近傍探索半径: {searchRadius.toFixed(1)} m
-            </label>
+  近傍探索半径: {(searchRadius * 100).toFixed(0)} cm
+</label>
             <input
               type="range"
-              min={0.5}
-              max={10}
-              step={0.5}
+            min={0.01}
+max={1}
+step={0.01}
               value={searchRadius}
               onChange={(e) => setSearchRadius(Number(e.target.value))}
               className="mt-1 w-full"
@@ -405,9 +415,9 @@ export default function LasViewer() {
             </label>
             <input
               type="range"
-              min={0.005}
-              max={0.2}
-              step={0.005}
+            min={0.001}
+max={0.05}
+step={0.001}
               value={pointSize}
               onChange={(e) => setPointSize(Number(e.target.value))}
               className="mt-1 w-full"
