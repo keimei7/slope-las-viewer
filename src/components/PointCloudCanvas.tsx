@@ -1,12 +1,30 @@
 "use client";
 
 import { Canvas } from "@react-three/fiber";
-import { OrbitControls, Line } from "@react-three/drei";
+import { Html, Line, OrbitControls } from "@react-three/drei";
 import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import type { PickedPoint, Point3 } from "./LasViewer";
 
 type ViewMode = "top" | "angled";
+type LengthUnit = "mm" | "cm" | "m";
+
+type PointCloudCanvasProps = {
+  points: Point3[];
+  startPoint: PickedPoint | null;
+  endPoint: PickedPoint | null;
+  manualPoints: PickedPoint[];
+  onPickPoint: (point: PickedPoint) => void;
+  zScale: number;
+  pointSize: number;
+  viewMode: ViewMode;
+  viewResetKey: number;
+  focusWidth: number;
+  sliceWidth: number;
+  pickRadius: number;
+  tapePoints: PickedPoint[];
+  lengthUnit: LengthUnit;
+};
 
 function computeBounds(points: Point3[]) {
   if (points.length === 0) {
@@ -58,59 +76,106 @@ function computeBounds(points: Point3[]) {
   };
 }
 
-function pointToSegmentMetrics2D(
-  px: number,
-  py: number,
-  ax: number,
-  ay: number,
-  bx: number,
-  by: number,
-) {
-  const abx = bx - ax;
-  const aby = by - ay;
-  const apx = px - ax;
-  const apy = py - ay;
+function distance3D(a: PickedPoint, b: PickedPoint) {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const dz = b.z - a.z;
+  return Math.sqrt(dx * dx + dy * dy + dz * dz);
+}
+
+function formatLength(valueMeters: number, unit: LengthUnit) {
+  if (unit === "mm") {
+    return `${Math.round(valueMeters * 1000)}mm`;
+  }
+  if (unit === "cm") {
+    return `${(valueMeters * 100).toFixed(1)}cm`;
+  }
+  return `${valueMeters.toFixed(3)}m`;
+}
+
+function pointToSegmentDistance2D(
+  point: Point3,
+  a: PickedPoint,
+  b: PickedPoint,
+): number {
+  const abx = b.x - a.x;
+  const aby = b.y - a.y;
+  const apx = point.x - a.x;
+  const apy = point.y - a.y;
 
   const abLenSq = abx * abx + aby * aby;
   if (abLenSq === 0) {
-    const dx = px - ax;
-    const dy = py - ay;
-    return { distance: Math.sqrt(dx * dx + dy * dy), t: 0 };
+    const dx = point.x - a.x;
+    const dy = point.y - a.y;
+    return Math.sqrt(dx * dx + dy * dy);
   }
 
   let t = (apx * abx + apy * aby) / abLenSq;
   t = Math.max(0, Math.min(1, t));
 
-  const cx = ax + abx * t;
-  const cy = ay + aby * t;
+  const cx = a.x + abx * t;
+  const cy = a.y + aby * t;
 
-  const dx = px - cx;
-  const dy = py - cy;
+  const dx = point.x - cx;
+  const dy = point.y - cy;
 
-  return {
-    distance: Math.sqrt(dx * dx + dy * dy),
-    t,
-  };
+  return Math.sqrt(dx * dx + dy * dy);
 }
 
-function PointCloud({
+function polylineDistance2D(point: Point3, polyline: PickedPoint[]) {
+  if (polyline.length < 2) return Infinity;
+
+  let best = Infinity;
+  for (let i = 1; i < polyline.length; i++) {
+    const d = pointToSegmentDistance2D(point, polyline[i - 1], polyline[i]);
+    if (d < best) best = d;
+  }
+  return best;
+}
+
+function findNearestPointByWorldPosition(
+  world: THREE.Vector3,
+  points: Point3[],
+  radius: number,
+): PickedPoint | null {
+  let nearest: PickedPoint | null = null;
+  let bestDistSq = radius * radius;
+
+  for (const p of points) {
+    const dx = p.x - world.x;
+    const dy = p.y - world.y;
+    const dz = p.z - world.z;
+
+    // XYを優先しつつZも少し見る
+    const distSq = dx * dx + dy * dy + dz * dz * 0.25;
+
+    if (distSq <= bestDistSq) {
+      nearest = { x: p.x, y: p.y, z: p.z };
+      bestDistSq = distSq;
+    }
+  }
+
+  return nearest;
+}
+
+function PointCloudMesh({
   points,
   zScale,
   pointSize,
-  onPick,
-  startPoint,
-  endPoint,
+  polylinePoints,
   focusWidth,
   sliceWidth,
+  onPickPoint,
+  pickRadius,
 }: {
   points: Point3[];
   zScale: number;
   pointSize: number;
-  onPick: (point: PickedPoint) => void;
-  startPoint: PickedPoint | null;
-  endPoint: PickedPoint | null;
+  polylinePoints: PickedPoint[];
   focusWidth: number;
   sliceWidth: number;
+  onPickPoint: (point: PickedPoint) => void;
+  pickRadius: number;
 }) {
   const bounds = useMemo(() => computeBounds(points), [points]);
 
@@ -118,8 +183,6 @@ function PointCloud({
     const g = new THREE.BufferGeometry();
     const positions = new Float32Array(points.length * 3);
     const colors = new Float32Array(points.length * 3);
-
-    const useLine = Boolean(startPoint && endPoint);
 
     for (let i = 0; i < points.length; i++) {
       const p = points[i];
@@ -132,25 +195,14 @@ function PointCloud({
       let gCol = 0.82;
       let b = 0.9;
 
-      if (useLine && startPoint && endPoint) {
-        const { distance, t } = pointToSegmentMetrics2D(
-          p.x,
-          p.y,
-          startPoint.x,
-          startPoint.y,
-          endPoint.x,
-          endPoint.y,
-        );
+      if (polylinePoints.length >= 2) {
+        const d = polylineDistance2D(p, polylinePoints);
 
-        const withinSegment = t >= 0 && t <= 1;
-        const withinSlice = distance <= sliceWidth;
-        const withinFocus = distance <= focusWidth;
-
-        if (withinSegment && withinSlice) {
+        if (d <= sliceWidth) {
           r = 1.0;
           gCol = 0.78;
           b = 0.35;
-        } else if (withinSegment && withinFocus) {
+        } else if (d <= focusWidth) {
           r = 0.92;
           gCol = 0.96;
           b = 1.0;
@@ -170,18 +222,24 @@ function PointCloud({
     g.setAttribute("color", new THREE.BufferAttribute(colors, 3));
     g.computeBoundingSphere();
     return g;
-  }, [points, bounds, zScale, startPoint, endPoint, focusWidth, sliceWidth]);
+  }, [points, bounds, zScale, polylinePoints, focusWidth, sliceWidth]);
 
   return (
     <points
       geometry={geometry}
-      onClick={(event) => {
+      onPointerDown={(event) => {
         event.stopPropagation();
-        onPick({
-          x: event.point.x + bounds.cx,
-          y: event.point.y + bounds.cy,
-          z: event.point.z / zScale + bounds.cz,
-        });
+
+        const world = new THREE.Vector3(
+          event.point.x + bounds.cx,
+          event.point.y + bounds.cy,
+          event.point.z + bounds.cz,
+        );
+
+        const snapped = findNearestPointByWorldPosition(world, points, pickRadius);
+        if (!snapped) return;
+
+        onPickPoint(snapped);
       }}
     >
       <pointsMaterial
@@ -198,108 +256,28 @@ function PointCloud({
 function Marker({
   point,
   color,
+  radius,
   bounds,
   zScale,
 }: {
   point: PickedPoint;
   color: string;
+  radius: number;
   bounds: ReturnType<typeof computeBounds>;
   zScale: number;
 }) {
   return (
     <mesh
+      raycast={() => null}
       position={[
         point.x - bounds.cx,
         point.y - bounds.cy,
         (point.z - bounds.cz) * zScale,
       ]}
     >
-      <sphereGeometry args={[0.12, 12, 12]} />
+      <sphereGeometry args={[radius, 12, 12]} />
       <meshBasicMaterial color={color} />
     </mesh>
-  );
-}
-
-function PickLine({
-  startPoint,
-  endPoint,
-  bounds,
-  zScale,
-}: {
-  startPoint: PickedPoint;
-  endPoint: PickedPoint;
-  bounds: ReturnType<typeof computeBounds>;
-  zScale: number;
-}) {
-  return (
-    <Line
-      points={[
-        [
-          startPoint.x - bounds.cx,
-          startPoint.y - bounds.cy,
-          (startPoint.z - bounds.cz) * zScale,
-        ],
-        [
-          endPoint.x - bounds.cx,
-          endPoint.y - bounds.cy,
-          (endPoint.z - bounds.cz) * zScale,
-        ],
-      ]}
-      color="#38bdf8"
-      lineWidth={0.9}
-    />
-  );
-}
-
-function TapeLine({
-  tapePoints,
-  bounds,
-  zScale,
-}: {
-  tapePoints: PickedPoint[];
-  bounds: ReturnType<typeof computeBounds>;
-  zScale: number;
-}) {
-  if (tapePoints.length < 2) return null;
-
-  return (
-    <Line
-      points={tapePoints.map((p) => [
-        p.x - bounds.cx,
-        p.y - bounds.cy,
-        (p.z - bounds.cz) * zScale,
-      ])}
-      color="#f59e0b"
-      lineWidth={1.2}
-    />
-  );
-}
-
-function TapeMarkers({
-  tapePoints,
-  bounds,
-  zScale,
-}: {
-  tapePoints: PickedPoint[];
-  bounds: ReturnType<typeof computeBounds>;
-  zScale: number;
-}) {
-  return (
-    <>
-      {tapePoints.map((p, index) => (
-        <mesh
-          key={`${p.x}-${p.y}-${p.z}-${index}`}
-          position={[
-            p.x - bounds.cx,
-            p.y - bounds.cy,
-            (p.z - bounds.cz) * zScale,
-          ]}
-        >
-          <sphereGeometry args={[0.05, 10, 10]} />
-          <meshBasicMaterial color="#f59e0b" />
-        </mesh>
-      ))}
-    </>
   );
 }
 
@@ -366,6 +344,100 @@ function SliceGuide({
   );
 }
 
+function LengthLabels({
+  startPoint,
+  endPoint,
+  tapePoints,
+  bounds,
+  zScale,
+  lengthUnit,
+}: {
+  startPoint: PickedPoint | null;
+  endPoint: PickedPoint | null;
+  tapePoints: PickedPoint[];
+  bounds: ReturnType<typeof computeBounds>;
+  zScale: number;
+  lengthUnit: LengthUnit;
+}) {
+  const labels = useMemo(() => {
+    if (!startPoint || !endPoint || tapePoints.length < 2) return null;
+
+    const straight = distance3D(startPoint, endPoint);
+
+    let follow = 0;
+    for (let i = 1; i < tapePoints.length; i++) {
+      follow += distance3D(tapePoints[i - 1], tapePoints[i]);
+    }
+
+    const mid = {
+      x: (startPoint.x + endPoint.x) / 2,
+      y: (startPoint.y + endPoint.y) / 2,
+      z: (startPoint.z + endPoint.z) / 2,
+    };
+
+    const dx = endPoint.x - startPoint.x;
+    const dy = endPoint.y - startPoint.y;
+    const len = Math.sqrt(dx * dx + dy * dy) || 1;
+
+    const nx = -dy / len;
+    const ny = dx / len;
+
+    const offsetXY = 0.22;
+    const offsetZ = 0.14;
+
+    return {
+      straight: formatLength(straight, lengthUnit),
+      follow: formatLength(follow, lengthUnit),
+      straightPosition: [
+        mid.x + nx * offsetXY - bounds.cx,
+        mid.y + ny * offsetXY - bounds.cy,
+        (mid.z - bounds.cz) * zScale + offsetZ,
+      ] as [number, number, number],
+      followPosition: [
+        mid.x - nx * offsetXY - bounds.cx,
+        mid.y - ny * offsetXY - bounds.cy,
+        (mid.z - bounds.cz) * zScale - offsetZ,
+      ] as [number, number, number],
+    };
+  }, [startPoint, endPoint, tapePoints, bounds, zScale, lengthUnit]);
+
+  if (!labels) return null;
+
+  return (
+    <>
+      <Html position={labels.straightPosition} center distanceFactor={24}>
+        <div
+          className="pointer-events-none select-none whitespace-nowrap"
+          style={{
+            color: "#7dd3fc",
+            fontSize: "11px",
+            lineHeight: 1,
+            fontWeight: 500,
+            textShadow: "0 0 4px rgba(2,6,23,0.95)",
+          }}
+        >
+          {labels.straight}
+        </div>
+      </Html>
+
+      <Html position={labels.followPosition} center distanceFactor={24}>
+        <div
+          className="pointer-events-none select-none whitespace-nowrap"
+          style={{
+            color: "#fcd34d",
+            fontSize: "11px",
+            lineHeight: 1,
+            fontWeight: 500,
+            textShadow: "0 0 4px rgba(2,6,23,0.95)",
+          }}
+        >
+          {labels.follow}
+        </div>
+      </Html>
+    </>
+  );
+}
+
 function CameraRig({
   points,
   zScale,
@@ -377,10 +449,7 @@ function CameraRig({
   viewMode: ViewMode;
   viewResetKey: number;
 }) {
-  const controlsRef = useRef<React.ElementRef<typeof OrbitControls> | null>(
-    null,
-  );
-
+  const controlsRef = useRef<React.ElementRef<typeof OrbitControls> | null>(null);
   const bounds = useMemo(() => computeBounds(points), [points]);
 
   useEffect(() => {
@@ -422,6 +491,7 @@ export default function PointCloudCanvas({
   points,
   startPoint,
   endPoint,
+  manualPoints,
   onPickPoint,
   zScale,
   pointSize,
@@ -429,24 +499,19 @@ export default function PointCloudCanvas({
   viewResetKey,
   focusWidth,
   sliceWidth,
+  pickRadius,
   tapePoints,
-}: {
-  points: Point3[];
-  startPoint: PickedPoint | null;
-  endPoint: PickedPoint | null;
-  onPickPoint: (p: PickedPoint) => void;
-  zScale: number;
-  pointSize: number;
-  viewMode: ViewMode;
-  viewResetKey: number;
-  focusWidth: number;
-  sliceWidth: number;
-  tapePoints: PickedPoint[];
-}) {
+  lengthUnit,
+}: PointCloudCanvasProps) {
   const bounds = useMemo(() => computeBounds(points), [points]);
   const gridSize = useMemo(
     () => Math.max(bounds.sx, bounds.sy, 200) * 2.5,
     [bounds],
+  );
+
+  const markerRadius = useMemo(
+    () => Math.max(pointSize * 12, Math.max(bounds.sx, bounds.sy, bounds.sz) / 800),
+    [pointSize, bounds],
   );
 
   return (
@@ -456,7 +521,9 @@ export default function PointCloudCanvas({
         camera={{ position: [0, 0, 200], fov: 40, near: 0.1, far: 200000 }}
         onCreated={({ gl, raycaster }) => {
           gl.setClearColor("#020617");
-          raycaster.params.Points = { threshold: 0.35 };
+          raycaster.params.Points = {
+            threshold: Math.max(pickRadius, pointSize * 0.8, 0.03),
+          };
         }}
       >
         <ambientLight intensity={0.65} />
@@ -467,43 +534,79 @@ export default function PointCloudCanvas({
           rotation={[Math.PI / 2, 0, 0]}
         />
 
-        <PointCloud
+        <PointCloudMesh
           points={points}
           zScale={zScale}
           pointSize={pointSize}
-          onPick={onPickPoint}
-          startPoint={startPoint}
-          endPoint={endPoint}
+          polylinePoints={tapePoints}
           focusWidth={focusWidth}
           sliceWidth={sliceWidth}
+          onPickPoint={onPickPoint}
+          pickRadius={pickRadius}
         />
 
         {startPoint ? (
           <Marker
             point={startPoint}
             color="#ef4444"
+            radius={markerRadius}
             bounds={bounds}
             zScale={zScale}
           />
         ) : null}
+
+        {manualPoints.map((point, index) => (
+          <Marker
+            key={`manual-${index}-${point.x}-${point.y}-${point.z}`}
+            point={point}
+            color="#f59e0b"
+            radius={markerRadius * 0.72}
+            bounds={bounds}
+            zScale={zScale}
+          />
+        ))}
 
         {endPoint ? (
           <Marker
             point={endPoint}
             color="#3b82f6"
+            radius={markerRadius}
             bounds={bounds}
             zScale={zScale}
           />
         ) : null}
 
+        {tapePoints.length >= 2 ? (
+          <Line
+            points={tapePoints.map((p) => [
+              p.x - bounds.cx,
+              p.y - bounds.cy,
+              (p.z - bounds.cz) * zScale,
+            ])}
+            color="#f59e0b"
+            lineWidth={1.2}
+          />
+        ) : null}
+
         {startPoint && endPoint ? (
           <>
-            <PickLine
-              startPoint={startPoint}
-              endPoint={endPoint}
-              bounds={bounds}
-              zScale={zScale}
+            <Line
+              points={[
+                [
+                  startPoint.x - bounds.cx,
+                  startPoint.y - bounds.cy,
+                  (startPoint.z - bounds.cz) * zScale,
+                ],
+                [
+                  endPoint.x - bounds.cx,
+                  endPoint.y - bounds.cy,
+                  (endPoint.z - bounds.cz) * zScale,
+                ],
+              ]}
+              color="#38bdf8"
+              lineWidth={0.9}
             />
+
             <SliceGuide
               startPoint={startPoint}
               endPoint={endPoint}
@@ -511,11 +614,17 @@ export default function PointCloudCanvas({
               zScale={zScale}
               sliceWidth={sliceWidth}
             />
+
+            <LengthLabels
+              startPoint={startPoint}
+              endPoint={endPoint}
+              tapePoints={tapePoints}
+              bounds={bounds}
+              zScale={zScale}
+              lengthUnit={lengthUnit}
+            />
           </>
         ) : null}
-
-        <TapeLine tapePoints={tapePoints} bounds={bounds} zScale={zScale} />
-        <TapeMarkers tapePoints={tapePoints} bounds={bounds} zScale={zScale} />
 
         <CameraRig
           points={points}

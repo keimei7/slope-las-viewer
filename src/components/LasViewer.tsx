@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ChangeEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { load } from "@loaders.gl/core";
 import { LASLoader } from "@loaders.gl/las";
 import PointCloudCanvas from "./PointCloudCanvas";
@@ -20,6 +20,7 @@ export type PickedPoint = {
 
 type LoadState = "idle" | "loading" | "loaded" | "error";
 type ViewMode = "top" | "angled";
+type LengthUnit = "mm" | "cm" | "m";
 
 function toPointsFromLasData(data: unknown): Point3[] {
   const rows: Point3[] = [];
@@ -59,120 +60,23 @@ function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));
 }
 
-function computeTapeSamplePoints(
-  sourcePoints: Point3[],
-  startPoint: PickedPoint | null,
-  endPoint: PickedPoint | null,
-  divisionCount: number,
-  searchRadius: number,
-  sliceWidth: number,
-): PickedPoint[] {
-  if (!startPoint || !endPoint) return [];
-  if (divisionCount < 1 || sourcePoints.length === 0) return [];
+function isSamePoint(a: PickedPoint | null, b: PickedPoint | null, eps = 1e-9) {
+  if (!a || !b) return false;
+  return (
+    Math.abs(a.x - b.x) < eps &&
+    Math.abs(a.y - b.y) < eps &&
+    Math.abs(a.z - b.z) < eps
+  );
+}
 
-  const ax = startPoint.x;
-  const ay = startPoint.y;
-  const az = startPoint.z;
-  const bx = endPoint.x;
-  const by = endPoint.y;
-  const bz = endPoint.z;
-
-  const dx = bx - ax;
-  const dy = by - ay;
-  const baseLen = Math.sqrt(dx * dx + dy * dy);
-
-  if (baseLen === 0) {
-    return [startPoint, endPoint];
+function formatLength(valueMeters: number, unit: LengthUnit) {
+  if (unit === "mm") {
+    return `${Math.round(valueMeters * 1000)}mm`;
   }
-
-  const ux = dx / baseLen;
-  const uy = dy / baseLen;
-
-  const samples: PickedPoint[] = [];
-  const step = baseLen / divisionCount;
-  const alongWindow = Math.max(step * 0.5, searchRadius);
-
-  for (let i = 0; i <= divisionCount; i++) {
-    const targetAlong = step * i;
-    const targetX = ax + ux * targetAlong;
-    const targetY = ay + uy * targetAlong;
-    const targetZ = az + ((bz - az) * i) / divisionCount;
-
-    const candidates: Array<{
-      point: Point3;
-      alongError: number;
-      perpDist: number;
-      score: number;
-    }> = [];
-
-    for (const p of sourcePoints) {
-      const px = p.x - ax;
-      const py = p.y - ay;
-
-      const along = px * ux + py * uy;
-      const perpX = px - along * ux;
-      const perpY = py - along * uy;
-      const perpDist = Math.sqrt(perpX * perpX + perpY * perpY);
-      const alongError = Math.abs(along - targetAlong);
-
-      if (along < -searchRadius || along > baseLen + searchRadius) continue;
-      if (alongError > alongWindow) continue;
-      if (perpDist > sliceWidth) continue;
-
-      const score = perpDist * 0.8 + alongError * 0.2;
-      candidates.push({
-        point: p,
-        alongError,
-        perpDist,
-        score,
-      });
-    }
-
-    if (candidates.length === 0) {
-      let fallback: Point3 | null = null;
-      let bestDistSq = Number.POSITIVE_INFINITY;
-
-      for (const p of sourcePoints) {
-        const ddx = p.x - targetX;
-        const ddy = p.y - targetY;
-        const distSq = ddx * ddx + ddy * ddy;
-        if (distSq < bestDistSq && distSq <= searchRadius * searchRadius) {
-          fallback = p;
-          bestDistSq = distSq;
-        }
-      }
-
-      if (fallback) {
-        samples.push({
-          x: fallback.x,
-          y: fallback.y,
-          z: fallback.z,
-        });
-      } else {
-        samples.push({
-          x: targetX,
-          y: targetY,
-          z: targetZ,
-        });
-      }
-
-      continue;
-    }
-
-    candidates.sort((a, b) => a.score - b.score);
-    const top = candidates.slice(0, Math.min(candidates.length, 9));
-
-    const sortedZ = [...top].sort((a, b) => a.point.z - b.point.z);
-    const median = sortedZ[Math.floor(sortedZ.length / 2)];
-
-    samples.push({
-      x: median.point.x,
-      y: median.point.y,
-      z: median.point.z,
-    });
+  if (unit === "cm") {
+    return `${(valueMeters * 100).toFixed(1)}cm`;
   }
-
-  return samples;
+  return `${valueMeters.toFixed(3)}m`;
 }
 
 export default function LasViewer() {
@@ -183,6 +87,7 @@ export default function LasViewer() {
 
   const [startPoint, setStartPoint] = useState<PickedPoint | null>(null);
   const [endPoint, setEndPoint] = useState<PickedPoint | null>(null);
+  const [manualPoints, setManualPoints] = useState<PickedPoint[]>([]);
 
   const [maxDisplayPoints, setMaxDisplayPoints] = useState(600000);
   const [zScale, setZScale] = useState(1);
@@ -191,15 +96,17 @@ export default function LasViewer() {
   const [viewResetKey, setViewResetKey] = useState(0);
   const [focusWidth, setFocusWidth] = useState(6);
 
-  const [divisionCount, setDivisionCount] = useState(8);
   const [searchRadius, setSearchRadius] = useState(0.1);
   const [sliceWidth, setSliceWidth] = useState(0.15);
   const [isPinned, setIsPinned] = useState(false);
+  const [lengthUnit, setLengthUnit] = useState<LengthUnit>("cm");
 
   const [leftWidth, setLeftWidth] = useState(360);
   const [rightWidth, setRightWidth] = useState(380);
   const [leftCollapsed, setLeftCollapsed] = useState(false);
   const [rightCollapsed, setRightCollapsed] = useState(false);
+
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const displayPoints = useMemo(() => {
     if (points.length <= maxDisplayPoints) {
@@ -252,15 +159,12 @@ export default function LasViewer() {
   }, [startPoint, endPoint]);
 
   const tapePoints = useMemo(() => {
-    return computeTapeSamplePoints(
-      displayPoints,
-      startPoint,
-      endPoint,
-      divisionCount,
-      searchRadius,
-      sliceWidth,
-    );
-  }, [displayPoints, startPoint, endPoint, divisionCount, searchRadius, sliceWidth]);
+    if (!startPoint) return [];
+    if (endPoint) {
+      return [startPoint, ...manualPoints, endPoint];
+    }
+    return [startPoint, ...manualPoints];
+  }, [startPoint, manualPoints, endPoint]);
 
   const tapeDistance = useMemo(() => {
     if (tapePoints.length < 2) return null;
@@ -275,24 +179,76 @@ export default function LasViewer() {
   function handlePick(point: PickedPoint) {
     if (isPinned) return;
 
-    if (!startPoint || endPoint) {
+    // 1点目
+    if (!startPoint) {
       setStartPoint(point);
+      setEndPoint(null);
+      setManualPoints([]);
+      return;
+    }
+
+    // 終点確定済みなら、新しい測線を開始
+    if (endPoint) {
+      setStartPoint(point);
+      setEndPoint(null);
+      setManualPoints([]);
+      setIsPinned(false);
+      return;
+    }
+
+    // 途中点追加モード
+    const lastReference =
+      manualPoints.length > 0 ? manualPoints[manualPoints.length - 1] : startPoint;
+
+    if (isSamePoint(lastReference, point)) {
+      return;
+    }
+
+    setManualPoints((prev) => [...prev, point]);
+  }
+
+  function finalizeEndPoint() {
+    if (!startPoint) return;
+    if (manualPoints.length === 0) return;
+
+    const nextEnd = manualPoints[manualPoints.length - 1];
+    const nextManual = manualPoints.slice(0, -1);
+
+    if (isSamePoint(startPoint, nextEnd)) return;
+
+    setManualPoints(nextManual);
+    setEndPoint(nextEnd);
+  }
+
+  function undoLastPoint() {
+    if (isPinned) return;
+
+    if (endPoint) {
       setEndPoint(null);
       return;
     }
 
-    setEndPoint(point);
+    if (manualPoints.length > 0) {
+      setManualPoints((prev) => prev.slice(0, -1));
+      return;
+    }
+
+    if (startPoint) {
+      setStartPoint(null);
+    }
   }
 
   function clearPickedPoints() {
     setStartPoint(null);
     setEndPoint(null);
+    setManualPoints([]);
     setIsPinned(false);
   }
 
   function resetMeasuredPointsOnly() {
     setStartPoint(null);
     setEndPoint(null);
+    setManualPoints([]);
   }
 
   function resetCamera(nextMode?: ViewMode) {
@@ -356,6 +312,10 @@ export default function LasViewer() {
     setStatus("loading");
     setErrorMessage("");
     setFileName(file.name);
+    setStartPoint(null);
+    setEndPoint(null);
+    setManualPoints([]);
+    setIsPinned(false);
 
     try {
       const buffer = await file.arrayBuffer();
@@ -385,6 +345,7 @@ export default function LasViewer() {
         points={displayPoints}
         startPoint={startPoint}
         endPoint={endPoint}
+        manualPoints={manualPoints}
         onPickPoint={handlePick}
         zScale={zScale}
         pointSize={pointSize}
@@ -392,15 +353,17 @@ export default function LasViewer() {
         viewResetKey={viewResetKey}
         focusWidth={focusWidth}
         sliceWidth={sliceWidth}
+        pickRadius={searchRadius}
         tapePoints={tapePoints}
+        lengthUnit={lengthUnit}
       />
 
       {!leftCollapsed ? (
         <aside
           style={{ width: leftWidth }}
-          className="absolute left-4 top-4 bottom-4 z-10 rounded-2xl border border-cyan-200/10 bg-slate-900/45 shadow-2xl backdrop-blur-md"
+          className="absolute left-4 top-4 bottom-4 z-10 overflow-hidden rounded-2xl border border-cyan-200/10 bg-slate-900/45 shadow-2xl backdrop-blur-md"
         >
-          <div className="h-full overflow-y-auto p-4 overscroll-contain">
+          <div className="h-full overflow-y-auto overscroll-contain p-4 pr-2">
             <div className="flex items-start justify-between gap-3">
               <div>
                 <h1 className="text-3xl font-semibold tracking-tight text-cyan-50">
@@ -424,14 +387,52 @@ export default function LasViewer() {
               <label className="mb-2 block text-xs font-medium uppercase tracking-wide text-cyan-100/80">
                 LASファイル
               </label>
+
               <input
+                ref={fileInputRef}
                 type="file"
                 accept=".las,.laz"
                 onChange={handleFileChange}
-                className="block w-full text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-cyan-500/20 file:px-3 file:py-2 file:text-sm file:font-medium file:text-cyan-50 hover:file:bg-cyan-500/30"
+                className="hidden"
               />
-              <div className="mt-2 break-all text-xs text-slate-300">
-                {fileName || "未選択"}
+
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="rounded-lg bg-cyan-500/20 px-3 py-2 text-sm font-medium text-cyan-50 hover:bg-cyan-500/30"
+                >
+                  ファイルを選択
+                </button>
+
+                {fileName ? (
+                  <div className="min-w-0 truncate text-sm text-slate-200">
+                    {fileName}
+                  </div>
+                ) : null}
+              </div>
+            </div>
+
+            <div className="mt-4 rounded-xl border border-white/10 bg-black/15 p-3">
+              <div className="text-xs font-semibold uppercase tracking-wide text-cyan-100/80">
+                単位表示
+              </div>
+
+              <div className="mt-3 flex gap-2">
+                {(["mm", "cm", "m"] as const).map((unit) => (
+                  <button
+                    key={unit}
+                    type="button"
+                    onClick={() => setLengthUnit(unit)}
+                    className={`rounded-lg border px-3 py-1.5 text-sm ${
+                      lengthUnit === unit
+                        ? "border-cyan-300/40 bg-cyan-400/20 text-cyan-50"
+                        : "border-white/10 bg-white/5 text-slate-100 hover:bg-white/10"
+                    }`}
+                  >
+                    {unit}
+                  </button>
+                ))}
               </div>
             </div>
 
@@ -447,23 +448,38 @@ export default function LasViewer() {
                     ? `${startPoint.x.toFixed(2)}, ${startPoint.y.toFixed(2)}, ${startPoint.z.toFixed(2)}`
                     : "-"}
                 </div>
+
+                <div className="mt-1">
+                  <span className="text-slate-400">途中点数:</span> {manualPoints.length}
+                </div>
+
                 <div className="mt-1">
                   <span className="text-slate-400">終点:</span>{" "}
                   {endPoint
                     ? `${endPoint.x.toFixed(2)}, ${endPoint.y.toFixed(2)}, ${endPoint.z.toFixed(2)}`
                     : "-"}
                 </div>
+
                 <div className="mt-1">
                   <span className="text-slate-400">直線距離:</span>{" "}
-                  {pickedDistance !== null ? `${pickedDistance.toFixed(3)} m` : "-"}
+                  {pickedDistance !== null ? formatLength(pickedDistance, lengthUnit) : "-"}
                 </div>
+
                 <div className="mt-1">
                   <span className="text-slate-400">沿わせ長:</span>{" "}
-                  {tapeDistance !== null ? `${tapeDistance.toFixed(3)} m` : "-"}
+                  {tapeDistance !== null ? formatLength(tapeDistance, lengthUnit) : "-"}
                 </div>
               </div>
 
               <div className="mt-3 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={undoLastPoint}
+                  className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-slate-100 hover:bg-white/10"
+                >
+                  1点戻す
+                </button>
+
                 <button
                   type="button"
                   onClick={clearPickedPoints}
@@ -481,44 +497,42 @@ export default function LasViewer() {
                 </button>
               </div>
 
-              <button
-                type="button"
-                onClick={() => setIsPinned((prev) => !prev)}
-                className="mt-2 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-slate-100 hover:bg-white/10"
-              >
-                {isPinned ? "ピン留め解除" : "この2点をピン留め"}
-              </button>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={finalizeEndPoint}
+                  disabled={!startPoint || manualPoints.length === 0 || !!endPoint}
+                  className="rounded-lg border border-white/10 bg-cyan-500/15 px-3 py-1.5 text-sm text-cyan-50 hover:bg-cyan-500/25 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  最後の点を終点にする
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setIsPinned((prev) => !prev)}
+                  className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-slate-100 hover:bg-white/10"
+                >
+                  {isPinned ? "ピン留め解除" : "この測線をピン留め"}
+                </button>
+              </div>
 
               <div className="mt-2 text-xs text-slate-400">
+                入力方式: 始点 → 途中点を手動追加 → 「最後の点を終点にする」で終点確定
+              </div>
+
+              <div className="mt-1 text-xs text-slate-400">
                 ピン状態: {isPinned ? "固定中" : "未固定"}
               </div>
             </div>
 
             <div className="mt-4 rounded-xl border border-white/10 bg-black/15 p-3">
               <div className="text-xs font-semibold uppercase tracking-wide text-cyan-100/80">
-                テープ設定
+                タップ判定 / 断面設定
               </div>
 
               <div className="mt-3">
                 <label className="block text-xs text-slate-300">
-                  分割数: {divisionCount}
-                </label>
-                <input
-                  type="range"
-                  min={2}
-                  max={20}
-                  step={1}
-                  value={divisionCount}
-                  onChange={(e) =>
-                    setDivisionCount(clamp(Number(e.target.value), 2, 20))
-                  }
-                  className="mt-1 w-full"
-                />
-              </div>
-
-              <div className="mt-3">
-                <label className="block text-xs text-slate-300">
-                  近傍探索半径: {(searchRadius * 100).toFixed(0)} cm
+                  タップ許容幅: {(searchRadius * 100).toFixed(0)} cm
                 </label>
                 <input
                   type="range"
@@ -551,7 +565,7 @@ export default function LasViewer() {
               </div>
 
               <div className="mt-3 text-xs text-slate-400">
-                サンプル点数: {tapePoints.length}
+                現在の測線点数: {tapePoints.length}
               </div>
             </div>
 
@@ -691,7 +705,7 @@ export default function LasViewer() {
 
           <div
             onMouseDown={() => startResize("left")}
-            className="absolute right-0 top-0 h-full w-3 cursor-ew-resize flex items-center justify-center text-cyan-300/50 hover:text-cyan-200"
+            className="absolute right-0 top-0 flex h-full w-3 cursor-ew-resize items-center justify-center text-cyan-300/50 hover:text-cyan-200"
           >
             ◀▶
           </div>
@@ -709,7 +723,7 @@ export default function LasViewer() {
       {!rightCollapsed ? (
         <section
           style={{ width: rightWidth }}
-          className="absolute right-4 top-4 bottom-4 z-10 rounded-2xl border border-cyan-200/10 bg-slate-900/35 shadow-2xl backdrop-blur-md"
+          className="absolute right-4 top-4 bottom-4 z-10 overflow-hidden rounded-2xl border border-cyan-200/10 bg-slate-900/35 shadow-2xl backdrop-blur-md"
         >
           <div className="flex h-full flex-col">
             <div className="border-b border-white/10 p-4">
@@ -736,7 +750,7 @@ export default function LasViewer() {
               </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto overscroll-contain p-4">
+            <div className="flex-1 overflow-y-auto overscroll-contain p-4 pr-2">
               <div className="rounded-xl border border-dashed border-white/10 bg-black/10 p-4 text-sm text-slate-400">
                 図面プレビュー領域
               </div>
@@ -761,7 +775,7 @@ export default function LasViewer() {
 
           <div
             onMouseDown={() => startResize("right")}
-            className="absolute left-0 top-0 h-full w-3 cursor-ew-resize flex items-center justify-center text-cyan-300/50 hover:text-cyan-200"
+            className="absolute left-0 top-0 flex h-full w-3 cursor-ew-resize items-center justify-center text-cyan-300/50 hover:text-cyan-200"
           >
             ◀▶
           </div>
