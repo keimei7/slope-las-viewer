@@ -132,7 +132,6 @@ export default function CrossSectionView({
       </div>
     );
   }
-
   if (!bounds) {
     return (
       <div className="flex h-full items-center justify-center text-sm text-slate-400">
@@ -141,7 +140,8 @@ export default function CrossSectionView({
     );
   }
 
-  // ---------- 描画設定 ----------
+  const safeBounds = bounds;
+
   const width = 1000;
   const height = 520;
   const padX = 48;
@@ -152,12 +152,16 @@ export default function CrossSectionView({
   const clamp = (v: number) => Math.max(0, Math.min(1, v));
 
   function sx(along: number) {
-    const t = clamp((along - bounds.minAlong) / (bounds.maxAlong - bounds.minAlong));
+    const t = clamp(
+      (along - safeBounds.minAlong) / (safeBounds.maxAlong - safeBounds.minAlong),
+    );
     return padX + t * innerW;
   }
 
   function sy(z: number) {
-    const t = clamp((z - bounds.minZ) / (bounds.maxZ - bounds.minZ));
+    const t = clamp(
+      (z - safeBounds.minZ) / (safeBounds.maxZ - safeBounds.minZ),
+    );
     return height - padY - t * innerH;
   }
 
