@@ -159,11 +159,8 @@ export default function LasViewer() {
   }, [startPoint, endPoint]);
 
   const tapePoints = useMemo(() => {
-    if (!startPoint) return [];
-    if (endPoint) {
-      return [startPoint, ...manualPoints, endPoint];
-    }
-    return [startPoint, ...manualPoints];
+    if (!startPoint || !endPoint) return [];
+    return [startPoint, ...manualPoints, endPoint];
   }, [startPoint, manualPoints, endPoint]);
 
   const tapeDistance = useMemo(() => {
@@ -179,7 +176,7 @@ export default function LasViewer() {
   function handlePick(point: PickedPoint) {
     if (isPinned) return;
 
-    // 1点目
+    // 1点目 = 始点
     if (!startPoint) {
       setStartPoint(point);
       setEndPoint(null);
@@ -187,49 +184,35 @@ export default function LasViewer() {
       return;
     }
 
-    // 終点確定済みなら、新しい測線を開始
-    if (endPoint) {
-      setStartPoint(point);
-      setEndPoint(null);
+    // 2点目 = 終点
+    if (!endPoint) {
+      if (isSamePoint(startPoint, point)) return;
+      setEndPoint(point);
       setManualPoints([]);
-      setIsPinned(false);
       return;
     }
 
-    // 途中点追加モード
+    // 3点目以降 = 手動沿わせ点（終点の手前に追加）
     const lastReference =
       manualPoints.length > 0 ? manualPoints[manualPoints.length - 1] : startPoint;
 
-    if (isSamePoint(lastReference, point)) {
+    if (isSamePoint(lastReference, point) || isSamePoint(endPoint, point)) {
       return;
     }
 
     setManualPoints((prev) => [...prev, point]);
   }
 
-  function finalizeEndPoint() {
-    if (!startPoint) return;
-    if (manualPoints.length === 0) return;
-
-    const nextEnd = manualPoints[manualPoints.length - 1];
-    const nextManual = manualPoints.slice(0, -1);
-
-    if (isSamePoint(startPoint, nextEnd)) return;
-
-    setManualPoints(nextManual);
-    setEndPoint(nextEnd);
-  }
-
   function undoLastPoint() {
     if (isPinned) return;
 
-    if (endPoint) {
-      setEndPoint(null);
+    if (manualPoints.length > 0) {
+      setManualPoints((prev) => prev.slice(0, -1));
       return;
     }
 
-    if (manualPoints.length > 0) {
-      setManualPoints((prev) => prev.slice(0, -1));
+    if (endPoint) {
+      setEndPoint(null);
       return;
     }
 
@@ -450,7 +433,7 @@ export default function LasViewer() {
                 </div>
 
                 <div className="mt-1">
-                  <span className="text-slate-400">途中点数:</span> {manualPoints.length}
+                  <span className="text-slate-400">手動沿わせ点:</span> {manualPoints.length}
                 </div>
 
                 <div className="mt-1">
@@ -500,15 +483,6 @@ export default function LasViewer() {
               <div className="mt-3 flex flex-wrap gap-2">
                 <button
                   type="button"
-                  onClick={finalizeEndPoint}
-                  disabled={!startPoint || manualPoints.length === 0 || !!endPoint}
-                  className="rounded-lg border border-white/10 bg-cyan-500/15 px-3 py-1.5 text-sm text-cyan-50 hover:bg-cyan-500/25 disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  最後の点を終点にする
-                </button>
-
-                <button
-                  type="button"
                   onClick={() => setIsPinned((prev) => !prev)}
                   className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-slate-100 hover:bg-white/10"
                 >
@@ -517,7 +491,7 @@ export default function LasViewer() {
               </div>
 
               <div className="mt-2 text-xs text-slate-400">
-                入力方式: 始点 → 途中点を手動追加 → 「最後の点を終点にする」で終点確定
+                入力方式: 始点 → 終点 → その後は終点の手前に手動沿わせ点を追加
               </div>
 
               <div className="mt-1 text-xs text-slate-400">
