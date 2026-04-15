@@ -155,21 +155,22 @@ export default function CrossSectionView({
       </div>
     );
   }
-
+  const safeBounds = bounds;
   const width = 1000;
   const height = 520;
   const padX = 48;
   const padY = 28;
   const innerW = width - padX * 2;
   const innerH = height - padY * 2;
-
   function sx(along: number) {
-    const t = (along - bounds.minAlong) / (bounds.maxAlong - bounds.minAlong);
+    const t =
+      (along - safeBounds.minAlong) /
+      (safeBounds.maxAlong - safeBounds.minAlong);
     return padX + t * innerW;
   }
 
   function sy(z: number) {
-    const t = (z - bounds.minZ) / (bounds.maxZ - bounds.minZ);
+    const t = (z - safeBounds.minZ) / (safeBounds.maxZ - safeBounds.minZ);
     return height - padY - t * innerH;
   }
 
