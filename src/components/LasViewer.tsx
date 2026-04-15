@@ -18,11 +18,17 @@ export type PickedPoint = {
 };
 
 type LoadState = "idle" | "loading" | "loaded" | "error";
+type ViewMode = "top" | "angled";
 
 function toPointsFromLasData(data: unknown): Point3[] {
   const rows: Point3[] = [];
+  const candidate = data as {
+    attributes?: {
+      POSITION?: { value?: Float32Array | Float64Array | number[] };
+      position?: { value?: Float32Array | Float64Array | number[] };
+    };
+  };
 
-  const candidate = data as any;
   const attr =
     candidate?.attributes?.POSITION?.value ??
     candidate?.attributes?.position?.value;
@@ -31,9 +37,9 @@ function toPointsFromLasData(data: unknown): Point3[] {
 
   for (let i = 0; i < attr.length; i += 3) {
     rows.push({
-      x: attr[i],
-      y: attr[i + 1],
-      z: attr[i + 2],
+      x: Number(attr[i]),
+      y: Number(attr[i + 1]),
+      z: Number(attr[i + 2]),
     });
   }
 
@@ -45,12 +51,15 @@ export default function LasViewer() {
   const [fileName, setFileName] = useState("");
   const [status, setStatus] = useState<LoadState>("idle");
   const [errorMessage, setErrorMessage] = useState("");
+
   const [startPoint, setStartPoint] = useState<PickedPoint | null>(null);
   const [endPoint, setEndPoint] = useState<PickedPoint | null>(null);
 
-  // 🔥 表示用に間引き
-    const [maxDisplayPoints, setMaxDisplayPoints] = useState(200000);
-  const [zScale, setZScale] = useState(1.5);
+  const [maxDisplayPoints, setMaxDisplayPoints] = useState(200000);
+  const [zScale, setZScale] = useState(2);
+  const [pointSize, setPointSize] = useState(0.7);
+  const [viewMode, setViewMode] = useState<ViewMode>("top");
+  const [viewResetKey, setViewResetKey] = useState(0);
 
   const displayPoints = useMemo(() => {
     if (points.length <= maxDisplayPoints) {
@@ -70,8 +79,12 @@ export default function LasViewer() {
   const stats = useMemo(() => {
     if (points.length === 0) return null;
 
-    let minX = Infinity, minY = Infinity, minZ = Infinity;
-    let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+    let minX = Infinity;
+    let minY = Infinity;
+    let minZ = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    let maxZ = -Infinity;
 
     for (const p of points) {
       if (p.x < minX) minX = p.x;
@@ -99,9 +112,10 @@ export default function LasViewer() {
     if (!startPoint || endPoint) {
       setStartPoint(point);
       setEndPoint(null);
-    } else {
-      setEndPoint(point);
+      return;
     }
+
+    setEndPoint(point);
   }
 
   function clearPickedPoints() {
@@ -109,53 +123,120 @@ export default function LasViewer() {
     setEndPoint(null);
   }
 
-  async function handleFileChange(e: ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
+  function resetCamera(nextMode?: ViewMode) {
+    if (nextMode) {
+      setViewMode(nextMode);
+    }
+    setViewResetKey((prev) => prev + 1);
+  }
+
+  async function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
     if (!file) return;
 
     setStatus("loading");
+    setErrorMessage("");
     setFileName(file.name);
+    setStartPoint(null);
+    setEndPoint(null);
 
     try {
       const buffer = await file.arrayBuffer();
       const data = await load(buffer, LASLoader);
       const parsed = toPointsFromLasData(data);
 
+      if (parsed.length === 0) {
+        throw new Error("点群を読み込めませんでした。LAS形式を確認してください。");
+      }
+
       setPoints(parsed);
       setStatus("loaded");
-    } catch (err) {
-      console.error(err);
+      setViewResetKey((prev) => prev + 1);
+    } catch (error) {
+      console.error(error);
+      setPoints([]);
       setStatus("error");
-      setErrorMessage("読み込み失敗");
+      setErrorMessage(
+        error instanceof Error ? error.message : "読み込みに失敗しました。",
+      );
     }
   }
 
   return (
-      <div className="grid min-h-screen grid-cols-[280px_1fr] bg-slate-100">
-      <aside className="p-4 border-r bg-white text-sm">
-        <h1 className="text-xl font-bold">LAS Viewer</h1>
+    <div className="relative h-screen w-screen overflow-hidden bg-slate-950 text-slate-100">
+      <PointCloudCanvas
+        points={displayPoints}
+        startPoint={startPoint}
+        endPoint={endPoint}
+        onPickPoint={handlePick}
+        zScale={zScale}
+        pointSize={pointSize}
+        viewMode={viewMode}
+        viewResetKey={viewResetKey}
+      />
 
-        <input type="file" accept=".las" onChange={handleFileChange} />
+      <aside className="absolute left-4 top-4 z-10 w-[320px] rounded-2xl border border-cyan-200/10 bg-slate-900/45 p-4 shadow-2xl backdrop-blur-md">
+        <h1 className="text-3xl font-semibold tracking-tight text-cyan-50">
+          LAS Viewer
+        </h1>
+        <p className="mt-2 text-sm text-slate-300">
+          点群を背景空間として表示し、法面計測の土台にする。
+        </p>
 
-        <div className="mt-3">
-          始点: {startPoint ? startPoint.x.toFixed(2) : "-"}<br/>
-          終点: {endPoint ? endPoint.x.toFixed(2) : "-"}<br/>
-          距離: {pickedDistance ? pickedDistance.toFixed(2) : "-"}
+        <div className="mt-4">
+          <label className="mb-2 block text-xs font-medium uppercase tracking-wide text-cyan-100/80">
+            LASファイル
+          </label>
+          <input
+            type="file"
+            accept=".las,.laz"
+            onChange={handleFileChange}
+            className="block w-full text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-cyan-500/20 file:px-3 file:py-2 file:text-sm file:font-medium file:text-cyan-50 hover:file:bg-cyan-500/30"
+          />
+          <div className="mt-2 break-all text-xs text-slate-300">
+            {fileName || "未選択"}
+          </div>
         </div>
 
-        <button onClick={clearPickedPoints}>クリア</button>
-
-        {stats && (
-          <div className="mt-3">
-            点数: {stats.count.toLocaleString()}
+        <div className="mt-4 rounded-xl border border-white/10 bg-black/15 p-3">
+          <div className="text-xs font-semibold uppercase tracking-wide text-cyan-100/80">
+            計測点
           </div>
-        )}
-      </aside>
-              <div className="mt-4 space-y-3 rounded-xl border border-slate-300 p-3">
-          <div className="font-medium">表示設定</div>
+          <div className="mt-2 text-sm">
+            <div>
+              <span className="text-slate-400">始点:</span>{" "}
+              {startPoint
+                ? `${startPoint.x.toFixed(2)}, ${startPoint.y.toFixed(2)}, ${startPoint.z.toFixed(2)}`
+                : "-"}
+            </div>
+            <div className="mt-1">
+              <span className="text-slate-400">終点:</span>{" "}
+              {endPoint
+                ? `${endPoint.x.toFixed(2)}, ${endPoint.y.toFixed(2)}, ${endPoint.z.toFixed(2)}`
+                : "-"}
+            </div>
+            <div className="mt-1">
+              <span className="text-slate-400">距離:</span>{" "}
+              {pickedDistance !== null ? `${pickedDistance.toFixed(3)} m` : "-"}
+            </div>
+          </div>
 
-          <div>
-            <label className="block text-xs text-slate-600">
+          <button
+            type="button"
+            onClick={clearPickedPoints}
+            className="mt-3 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-slate-100 hover:bg-white/10"
+          >
+            点をクリア
+          </button>
+        </div>
+
+        <div className="mt-4 rounded-xl border border-white/10 bg-black/15 p-3">
+          <div className="text-xs font-semibold uppercase tracking-wide text-cyan-100/80">
+            表示設定
+          </div>
+
+          <div className="mt-3">
+            <label className="block text-xs text-slate-300">
               表示点数上限: {maxDisplayPoints.toLocaleString()}
             </label>
             <input
@@ -165,37 +246,114 @@ export default function LasViewer() {
               step={50000}
               value={maxDisplayPoints}
               onChange={(e) => setMaxDisplayPoints(Number(e.target.value))}
-              className="w-full"
+              className="mt-1 w-full"
             />
           </div>
 
-          <div>
-            <label className="block text-xs text-slate-600">
+          <div className="mt-3">
+            <label className="block text-xs text-slate-300">
               Z誇張: {zScale.toFixed(1)}x
             </label>
             <input
               type="range"
               min={0.5}
-              max={5}
+              max={6}
               step={0.1}
               value={zScale}
               onChange={(e) => setZScale(Number(e.target.value))}
-              className="w-full"
+              className="mt-1 w-full"
             />
           </div>
 
-          <div className="text-xs text-slate-500">
+          <div className="mt-3">
+            <label className="block text-xs text-slate-300">
+              点サイズ: {pointSize.toFixed(1)}
+            </label>
+            <input
+              type="range"
+              min={0.2}
+              max={2}
+              step={0.1}
+              value={pointSize}
+              onChange={(e) => setPointSize(Number(e.target.value))}
+              className="mt-1 w-full"
+            />
+          </div>
+
+          <div className="mt-4 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => resetCamera("top")}
+              className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm hover:bg-white/10"
+            >
+              真上
+            </button>
+            <button
+              type="button"
+              onClick={() => resetCamera("angled")}
+              className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm hover:bg-white/10"
+            >
+              斜め
+            </button>
+            <button
+              type="button"
+              onClick={() => resetCamera()}
+              className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm hover:bg-white/10"
+            >
+              リセット
+            </button>
+          </div>
+
+          <div className="mt-3 text-xs text-slate-400">
             表示中: {displayPoints.length.toLocaleString()} 点
           </div>
         </div>
 
-           <PointCloudCanvas
-        points={displayPoints}
-        startPoint={startPoint}
-        endPoint={endPoint}
-        onPickPoint={handlePick}
-        zScale={zScale}
-      />
+        <div className="mt-4 rounded-xl border border-white/10 bg-black/15 p-3">
+          <div className="text-xs font-semibold uppercase tracking-wide text-cyan-100/80">
+            状態
+          </div>
+          <div className="mt-2 text-sm">
+            <div>
+              <span className="text-slate-400">状態:</span> {status}
+            </div>
+            {stats ? (
+              <>
+                <div className="mt-1">
+                  <span className="text-slate-400">点数:</span>{" "}
+                  {stats.count.toLocaleString()}
+                </div>
+                <div className="mt-1 text-xs text-slate-400">
+                  X: {stats.minX.toFixed(2)} ～ {stats.maxX.toFixed(2)}
+                </div>
+                <div className="mt-1 text-xs text-slate-400">
+                  Y: {stats.minY.toFixed(2)} ～ {stats.maxY.toFixed(2)}
+                </div>
+                <div className="mt-1 text-xs text-slate-400">
+                  Z: {stats.minZ.toFixed(2)} ～ {stats.maxZ.toFixed(2)}
+                </div>
+              </>
+            ) : null}
+            {errorMessage ? (
+              <div className="mt-2 text-sm text-rose-300">{errorMessage}</div>
+            ) : null}
+          </div>
+        </div>
+      </aside>
+
+      <section className="absolute right-4 top-4 z-10 w-[360px] rounded-2xl border border-cyan-200/10 bg-slate-900/35 p-4 shadow-2xl backdrop-blur-md">
+        <div className="text-xs font-semibold uppercase tracking-wide text-cyan-100/80">
+          Future Panel
+        </div>
+        <h2 className="mt-2 text-xl font-semibold text-cyan-50">展開図 / 図面</h2>
+        <p className="mt-2 text-sm text-slate-300">
+          ここに将来、2D展開図プレビュー、分割数、DXF出力などを載せる。
+        </p>
+
+        <div className="mt-4 rounded-xl border border-dashed border-white/10 bg-black/10 p-6 text-center text-sm text-slate-400">
+          図面プレビュー領域
+        </div>
+      </section>
     </div>
   );
 }
