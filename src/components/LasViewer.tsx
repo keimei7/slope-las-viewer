@@ -22,6 +22,7 @@ type ViewMode = "top" | "angled";
 
 function toPointsFromLasData(data: unknown): Point3[] {
   const rows: Point3[] = [];
+
   const candidate = data as {
     attributes?: {
       POSITION?: { value?: Float32Array | Float64Array | number[] };
@@ -57,9 +58,10 @@ export default function LasViewer() {
 
   const [maxDisplayPoints, setMaxDisplayPoints] = useState(200000);
   const [zScale, setZScale] = useState(2);
-  const [pointSize, setPointSize] = useState(0.7);
+  const [pointSize, setPointSize] = useState(0.04);
   const [viewMode, setViewMode] = useState<ViewMode>("top");
   const [viewResetKey, setViewResetKey] = useState(0);
+  const [focusWidth, setFocusWidth] = useState(6);
 
   const displayPoints = useMemo(() => {
     if (points.length <= maxDisplayPoints) {
@@ -95,7 +97,15 @@ export default function LasViewer() {
       if (p.z > maxZ) maxZ = p.z;
     }
 
-    return { count: points.length, minX, minY, minZ, maxX, maxY, maxZ };
+    return {
+      count: points.length,
+      minX,
+      minY,
+      minZ,
+      maxX,
+      maxY,
+      maxZ,
+    };
   }, [points]);
 
   const pickedDistance = useMemo(() => {
@@ -173,6 +183,7 @@ export default function LasViewer() {
         pointSize={pointSize}
         viewMode={viewMode}
         viewResetKey={viewResetKey}
+        focusWidth={focusWidth}
       />
 
       <aside className="absolute left-4 top-4 z-10 w-[320px] rounded-2xl border border-cyan-200/10 bg-slate-900/45 p-4 shadow-2xl backdrop-blur-md">
@@ -267,15 +278,30 @@ export default function LasViewer() {
 
           <div className="mt-3">
             <label className="block text-xs text-slate-300">
-              点サイズ: {pointSize.toFixed(1)}
+              点サイズ: {pointSize.toFixed(3)}
             </label>
             <input
               type="range"
-              min={0.2}
-              max={2}
-              step={0.1}
+              min={0.005}
+              max={0.2}
+              step={0.005}
               value={pointSize}
               onChange={(e) => setPointSize(Number(e.target.value))}
+              className="mt-1 w-full"
+            />
+          </div>
+
+          <div className="mt-3">
+            <label className="block text-xs text-slate-300">
+              計測ライン強調幅: {focusWidth.toFixed(1)} m
+            </label>
+            <input
+              type="range"
+              min={1}
+              max={20}
+              step={0.5}
+              value={focusWidth}
+              onChange={(e) => setFocusWidth(Number(e.target.value))}
               className="mt-1 w-full"
             />
           </div>

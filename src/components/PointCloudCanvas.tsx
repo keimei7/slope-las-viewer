@@ -58,33 +58,105 @@ function computeBounds(points: Point3[]) {
   };
 }
 
+function distancePointToSegment2D(
+  px: number,
+  py: number,
+  ax: number,
+  ay: number,
+  bx: number,
+  by: number,
+) {
+  const abx = bx - ax;
+  const aby = by - ay;
+  const apx = px - ax;
+  const apy = py - ay;
+
+  const abLenSq = abx * abx + aby * aby;
+  if (abLenSq === 0) {
+    const dx = px - ax;
+    const dy = py - ay;
+    return Math.sqrt(dx * dx + dy * dy);
+  }
+
+  let t = (apx * abx + apy * aby) / abLenSq;
+  t = Math.max(0, Math.min(1, t));
+
+  const cx = ax + abx * t;
+  const cy = ay + aby * t;
+
+  const dx = px - cx;
+  const dy = py - cy;
+  return Math.sqrt(dx * dx + dy * dy);
+}
+
 function PointCloud({
   points,
   zScale,
   pointSize,
   onPick,
+  startPoint,
+  endPoint,
+  focusWidth,
 }: {
   points: Point3[];
   zScale: number;
   pointSize: number;
   onPick: (point: PickedPoint) => void;
+  startPoint: PickedPoint | null;
+  endPoint: PickedPoint | null;
+  focusWidth: number;
 }) {
   const bounds = useMemo(() => computeBounds(points), [points]);
 
   const geometry = useMemo(() => {
     const g = new THREE.BufferGeometry();
     const positions = new Float32Array(points.length * 3);
+    const colors = new Float32Array(points.length * 3);
 
-    points.forEach((p, i) => {
+    const useFocus = Boolean(startPoint && endPoint);
+
+    for (let i = 0; i < points.length; i++) {
+      const p = points[i];
+
       positions[i * 3] = p.x - bounds.cx;
       positions[i * 3 + 1] = p.y - bounds.cy;
       positions[i * 3 + 2] = (p.z - bounds.cz) * zScale;
-    });
+
+      let r = 0.82;
+      let gCol = 0.86;
+      let b = 0.92;
+
+      if (useFocus && startPoint && endPoint) {
+        const d = distancePointToSegment2D(
+          p.x,
+          p.y,
+          startPoint.x,
+          startPoint.y,
+          endPoint.x,
+          endPoint.y,
+        );
+
+        if (d <= focusWidth) {
+          r = 0.95;
+          gCol = 0.98;
+          b = 1.0;
+        } else {
+          r = 0.22;
+          gCol = 0.26;
+          b = 0.34;
+        }
+      }
+
+      colors[i * 3] = r;
+      colors[i * 3 + 1] = gCol;
+      colors[i * 3 + 2] = b;
+    }
 
     g.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+    g.setAttribute("color", new THREE.BufferAttribute(colors, 3));
     g.computeBoundingSphere();
     return g;
-  }, [points, bounds, zScale]);
+  }, [points, bounds, zScale, startPoint, endPoint, focusWidth]);
 
   return (
     <points
@@ -100,8 +172,8 @@ function PointCloud({
     >
       <pointsMaterial
         size={pointSize}
-        sizeAttenuation
-        color="#cbd5e1"
+        sizeAttenuation={false}
+        vertexColors
         opacity={0.95}
         transparent
       />
@@ -128,7 +200,7 @@ function Marker({
         (point.z - bounds.cz) * zScale,
       ]}
     >
-      <sphereGeometry args={[1.2, 20, 20]} />
+      <sphereGeometry args={[0.6, 16, 16]} />
       <meshBasicMaterial color={color} />
     </mesh>
   );
@@ -160,7 +232,7 @@ function PickLine({
         ],
       ]}
       color="#38bdf8"
-      lineWidth={2}
+      lineWidth={1.5}
     />
   );
 }
@@ -187,15 +259,18 @@ function CameraRig({
     if (!controls || points.length === 0) return;
 
     const maxSpan = Math.max(bounds.sx, bounds.sy, bounds.sz * zScale, 1);
-
     controls.target.set(0, 0, 0);
 
     if (viewMode === "top") {
-      controls.object.position.set(0, 0, maxSpan * 2.2);
+      controls.object.position.set(0, 0, maxSpan * 1.8);
+      controls.enableRotate = false;
     } else {
-      controls.object.position.set(maxSpan * 1.2, -maxSpan * 1.2, maxSpan * 0.9);
+      controls.object.position.set(maxSpan * 1.0, -maxSpan * 1.0, maxSpan * 0.75);
+      controls.enableRotate = true;
     }
 
+    controls.enablePan = true;
+    controls.enableZoom = true;
     controls.update();
   }, [bounds, points.length, viewMode, viewResetKey, zScale]);
 
@@ -204,25 +279,11 @@ function CameraRig({
       ref={controlsRef}
       makeDefault
       enablePan
-      enableRotate
       enableZoom
       zoomSpeed={1}
       rotateSpeed={0.8}
       panSpeed={0.8}
     />
-  );
-}
-
-function SceneGrid({ size }: { size: number }) {
-  return (
-    <>
-      <gridHelper args={[size, 60, "#334155", "#1e293b"]} rotation={[0, 0, 0]} />
-      <gridHelper
-        args={[size, 20, "#1e293b", "#0f172a"]}
-        position={[0, 0, -0.02]}
-        rotation={[0, 0, 0]}
-      />
-    </>
   );
 }
 
@@ -235,6 +296,7 @@ export default function PointCloudCanvas({
   pointSize,
   viewMode,
   viewResetKey,
+  focusWidth,
 }: {
   points: Point3[];
   startPoint: PickedPoint | null;
@@ -244,34 +306,34 @@ export default function PointCloudCanvas({
   pointSize: number;
   viewMode: ViewMode;
   viewResetKey: number;
+  focusWidth: number;
 }) {
   const bounds = useMemo(() => computeBounds(points), [points]);
-  const gridSize = useMemo(() => {
-    return Math.max(bounds.sx, bounds.sy, 200) * 3;
-  }, [bounds]);
+  const gridSize = useMemo(() => Math.max(bounds.sx, bounds.sy, 200) * 2.5, [bounds]);
 
   return (
     <main className="absolute inset-0">
       <Canvas
         className="h-full w-full"
-        camera={{ position: [0, 0, 200], fov: 45, near: 0.1, far: 200000 }}
+        camera={{ position: [0, 0, 200], fov: 40, near: 0.1, far: 200000 }}
         onCreated={({ gl, raycaster }) => {
           gl.setClearColor("#020617");
-          raycaster.params.Points = { threshold: Math.max(pointSize * 2.5, 2) };
+          raycaster.params.Points = { threshold: 1.5 };
         }}
       >
-        <fog attach="fog" args={["#020617", 200, 3000]} />
-        <ambientLight intensity={0.8} />
-        <directionalLight position={[200, -100, 300]} intensity={0.9} />
-        <directionalLight position={[-100, 200, 150]} intensity={0.25} />
+        <ambientLight intensity={0.65} />
+        <directionalLight position={[200, -100, 300]} intensity={0.55} />
 
-        <SceneGrid size={gridSize} />
+        <gridHelper args={[gridSize, 40, "#1e293b", "#0f172a"]} />
 
         <PointCloud
           points={points}
           zScale={zScale}
           pointSize={pointSize}
           onPick={onPickPoint}
+          startPoint={startPoint}
+          endPoint={endPoint}
+          focusWidth={focusWidth}
         />
 
         {startPoint ? (
