@@ -229,8 +229,8 @@ export default function LasViewer() {
   const [focusWidth, setFocusWidth] = useState(6);
 
   const [divisionCount, setDivisionCount] = useState(8);
-  const [searchRadius, setSearchRadius] = useState(0.1);
-  const [sliceWidth, setSliceWidth] = useState(0.15);
+  const [searchRadius, setSearchRadius] = useState(0.01);
+const [sliceWidth, setSliceWidth] = useState(0.02);
   const [isPinned, setIsPinned] = useState(false);
 
   const [leftWidth, setLeftWidth] = useState(360);
