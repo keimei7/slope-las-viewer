@@ -342,7 +342,7 @@ export default function LasViewer() {
         tapePoints={tapePoints}
       />
 
-      <aside className="absolute left-4 top-4 z-10 w-[360px] rounded-2xl border border-cyan-200/10 bg-slate-900/45 p-4 shadow-2xl backdrop-blur-md">
+      <aside className="absolute left-4 top-4 bottom-4 z-10 w-[360px] overflow-y-auto rounded-2xl border border-cyan-200/10 bg-slate-900/45 p-4 shadow-2xl backdrop-blur-md">
         <h1 className="text-3xl font-semibold tracking-tight text-cyan-50">
           LAS Viewer
         </h1>
@@ -587,7 +587,7 @@ export default function LasViewer() {
           </div>
         </div>
 
-        <div className="mt-4 rounded-xl border border-white/10 bg-black/15 p-3">
+              <div className="mt-4 rounded-xl border border-white/10 bg-black/15 p-3">
           <div className="text-xs font-semibold uppercase tracking-wide text-cyan-100/80">
             状態
           </div>
@@ -619,13 +619,16 @@ export default function LasViewer() {
         </div>
       </aside>
 
-      <section className="absolute right-4 top-4 z-10 w-[360px] rounded-2xl border border-cyan-200/10 bg-slate-900/35 p-4 shadow-2xl backdrop-blur-md">
+      {/* 右パネル */}
+      <section className="absolute right-4 top-4 bottom-4 z-10 w-[360px] overflow-y-auto rounded-2xl border border-cyan-200/10 bg-slate-900/35 p-4 shadow-2xl backdrop-blur-md">
         <div className="text-xs font-semibold uppercase tracking-wide text-cyan-100/80">
           Future Panel
         </div>
+
         <h2 className="mt-2 text-xl font-semibold text-cyan-50">
           展開図 / 図面
         </h2>
+
         <p className="mt-2 text-sm text-slate-300">
           ここに将来、2D展開図プレビュー、分割数、DXF出力などを載せる。
         </p>
