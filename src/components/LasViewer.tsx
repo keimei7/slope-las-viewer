@@ -47,6 +47,66 @@ function toPointsFromLasData(data: unknown): Point3[] {
   return rows;
 }
 
+function distance3D(a: PickedPoint, b: PickedPoint) {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const dz = b.z - a.z;
+  return Math.sqrt(dx * dx + dy * dy + dz * dz);
+}
+
+function buildTapeSamplePoints(
+  sourcePoints: Point3[],
+  startPoint: PickedPoint | null,
+  endPoint: PickedPoint | null,
+  divisionCount: number,
+  searchRadius: number,
+): PickedPoint[] {
+  if (!startPoint || !endPoint) return [];
+  if (divisionCount < 1) return [];
+
+  const sampled: PickedPoint[] = [];
+
+  for (let i = 0; i <= divisionCount; i++) {
+    const t = i / divisionCount;
+
+    const targetX = startPoint.x + (endPoint.x - startPoint.x) * t;
+    const targetY = startPoint.y + (endPoint.y - startPoint.y) * t;
+    const targetZ = startPoint.z + (endPoint.z - startPoint.z) * t;
+
+    let nearest: Point3 | null = null;
+    let nearestDistSq = Number.POSITIVE_INFINITY;
+
+    for (const p of sourcePoints) {
+      const dx = p.x - targetX;
+      const dy = p.y - targetY;
+      const dxySq = dx * dx + dy * dy;
+
+      if (dxySq > searchRadius * searchRadius) continue;
+
+      if (dxySq < nearestDistSq) {
+        nearest = p;
+        nearestDistSq = dxySq;
+      }
+    }
+
+    if (nearest) {
+      sampled.push({
+        x: nearest.x,
+        y: nearest.y,
+        z: nearest.z,
+      });
+    } else {
+      sampled.push({
+        x: targetX,
+        y: targetY,
+        z: targetZ,
+      });
+    }
+  }
+
+  return sampled;
+}
+
 export default function LasViewer() {
   const [points, setPoints] = useState<Point3[]>([]);
   const [fileName, setFileName] = useState("");
@@ -62,6 +122,9 @@ export default function LasViewer() {
   const [viewMode, setViewMode] = useState<ViewMode>("top");
   const [viewResetKey, setViewResetKey] = useState(0);
   const [focusWidth, setFocusWidth] = useState(6);
+
+  const [divisionCount, setDivisionCount] = useState(12);
+  const [searchRadius, setSearchRadius] = useState(2);
 
   const displayPoints = useMemo(() => {
     if (points.length <= maxDisplayPoints) {
@@ -110,13 +173,28 @@ export default function LasViewer() {
 
   const pickedDistance = useMemo(() => {
     if (!startPoint || !endPoint) return null;
-
-    const dx = endPoint.x - startPoint.x;
-    const dy = endPoint.y - startPoint.y;
-    const dz = endPoint.z - startPoint.z;
-
-    return Math.sqrt(dx * dx + dy * dy + dz * dz);
+    return distance3D(startPoint, endPoint);
   }, [startPoint, endPoint]);
+
+  const tapePoints = useMemo(() => {
+    return buildTapeSamplePoints(
+      displayPoints,
+      startPoint,
+      endPoint,
+      divisionCount,
+      searchRadius,
+    );
+  }, [displayPoints, startPoint, endPoint, divisionCount, searchRadius]);
+
+  const tapeDistance = useMemo(() => {
+    if (tapePoints.length < 2) return null;
+
+    let total = 0;
+    for (let i = 1; i < tapePoints.length; i++) {
+      total += distance3D(tapePoints[i - 1], tapePoints[i]);
+    }
+    return total;
+  }, [tapePoints]);
 
   function handlePick(point: PickedPoint) {
     if (!startPoint || endPoint) {
@@ -184,9 +262,10 @@ export default function LasViewer() {
         viewMode={viewMode}
         viewResetKey={viewResetKey}
         focusWidth={focusWidth}
+        tapePoints={tapePoints}
       />
 
-      <aside className="absolute left-4 top-4 z-10 w-[320px] rounded-2xl border border-cyan-200/10 bg-slate-900/45 p-4 shadow-2xl backdrop-blur-md">
+      <aside className="absolute left-4 top-4 z-10 w-[340px] rounded-2xl border border-cyan-200/10 bg-slate-900/45 p-4 shadow-2xl backdrop-blur-md">
         <h1 className="text-3xl font-semibold tracking-tight text-cyan-50">
           LAS Viewer
         </h1>
@@ -227,8 +306,12 @@ export default function LasViewer() {
                 : "-"}
             </div>
             <div className="mt-1">
-              <span className="text-slate-400">距離:</span>{" "}
+              <span className="text-slate-400">直線距離:</span>{" "}
               {pickedDistance !== null ? `${pickedDistance.toFixed(3)} m` : "-"}
+            </div>
+            <div className="mt-1">
+              <span className="text-slate-400">沿わせ長:</span>{" "}
+              {tapeDistance !== null ? `${tapeDistance.toFixed(3)} m` : "-"}
             </div>
           </div>
 
@@ -239,6 +322,46 @@ export default function LasViewer() {
           >
             点をクリア
           </button>
+        </div>
+
+        <div className="mt-4 rounded-xl border border-white/10 bg-black/15 p-3">
+          <div className="text-xs font-semibold uppercase tracking-wide text-cyan-100/80">
+            テープ設定
+          </div>
+
+          <div className="mt-3">
+            <label className="block text-xs text-slate-300">
+              分割数: {divisionCount}
+            </label>
+            <input
+              type="range"
+              min={2}
+              max={60}
+              step={1}
+              value={divisionCount}
+              onChange={(e) => setDivisionCount(Number(e.target.value))}
+              className="mt-1 w-full"
+            />
+          </div>
+
+          <div className="mt-3">
+            <label className="block text-xs text-slate-300">
+              近傍探索半径: {searchRadius.toFixed(1)} m
+            </label>
+            <input
+              type="range"
+              min={0.5}
+              max={10}
+              step={0.5}
+              value={searchRadius}
+              onChange={(e) => setSearchRadius(Number(e.target.value))}
+              className="mt-1 w-full"
+            />
+          </div>
+
+          <div className="mt-3 text-xs text-slate-400">
+            サンプル点数: {tapePoints.length}
+          </div>
         </div>
 
         <div className="mt-4 rounded-xl border border-white/10 bg-black/15 p-3">
