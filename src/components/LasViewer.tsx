@@ -559,9 +559,9 @@ export default function LasViewer() {
                 </label>
                 <input
                   type="range"
-                  min={0.01}
-                  max={1}
-                  step={0.01}
+                  min={0.005}
+max={0.05}
+step={0.005}
                   value={searchRadius}
                   onChange={(e) =>
                     setSearchRadius(clamp(Number(e.target.value), 0.01, 1))
@@ -577,8 +577,8 @@ export default function LasViewer() {
                 <input
                   type="range"
                   min={0.01}
-                  max={1}
-                  step={0.01}
+max={0.1}
+step={0.005}
                   value={sliceWidth}
                   onChange={(e) =>
                     setSliceWidth(clamp(Number(e.target.value), 0.01, 1))
