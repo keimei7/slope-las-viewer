@@ -58,7 +58,7 @@ function computeBounds(points: Point3[]) {
   };
 }
 
-function distancePointToSegment2D(
+function pointToSegmentMetrics2D(
   px: number,
   py: number,
   ax: number,
@@ -75,7 +75,10 @@ function distancePointToSegment2D(
   if (abLenSq === 0) {
     const dx = px - ax;
     const dy = py - ay;
-    return Math.sqrt(dx * dx + dy * dy);
+    return {
+      distance: Math.sqrt(dx * dx + dy * dy),
+      t: 0,
+    };
   }
 
   let t = (apx * abx + apy * aby) / abLenSq;
@@ -86,7 +89,11 @@ function distancePointToSegment2D(
 
   const dx = px - cx;
   const dy = py - cy;
-  return Math.sqrt(dx * dx + dy * dy);
+
+  return {
+    distance: Math.sqrt(dx * dx + dy * dy),
+    t,
+  };
 }
 
 function PointCloud({
@@ -97,6 +104,7 @@ function PointCloud({
   startPoint,
   endPoint,
   focusWidth,
+  sliceWidth,
 }: {
   points: Point3[];
   zScale: number;
@@ -105,6 +113,7 @@ function PointCloud({
   startPoint: PickedPoint | null;
   endPoint: PickedPoint | null;
   focusWidth: number;
+  sliceWidth: number;
 }) {
   const bounds = useMemo(() => computeBounds(points), [points]);
 
@@ -113,7 +122,7 @@ function PointCloud({
     const positions = new Float32Array(points.length * 3);
     const colors = new Float32Array(points.length * 3);
 
-    const useFocus = Boolean(startPoint && endPoint);
+    const useLine = Boolean(startPoint && endPoint);
 
     for (let i = 0; i < points.length; i++) {
       const p = points[i];
@@ -122,12 +131,12 @@ function PointCloud({
       positions[i * 3 + 1] = p.y - bounds.cy;
       positions[i * 3 + 2] = (p.z - bounds.cz) * zScale;
 
-      let r = 0.82;
-      let gCol = 0.86;
-      let b = 0.92;
+      let r = 0.76;
+      let gCol = 0.82;
+      let b = 0.9;
 
-      if (useFocus && startPoint && endPoint) {
-        const d = distancePointToSegment2D(
+      if (useLine && startPoint && endPoint) {
+        const { distance, t } = pointToSegmentMetrics2D(
           p.x,
           p.y,
           startPoint.x,
@@ -136,14 +145,22 @@ function PointCloud({
           endPoint.y,
         );
 
-        if (d <= focusWidth) {
-          r = 0.95;
-          gCol = 0.98;
+        const withinSegment = t >= 0 && t <= 1;
+        const withinSlice = distance <= sliceWidth;
+        const withinFocus = distance <= focusWidth;
+
+        if (withinSegment && withinSlice) {
+          r = 1.0;
+          gCol = 0.78;
+          b = 0.35;
+        } else if (withinSegment && withinFocus) {
+          r = 0.92;
+          gCol = 0.96;
           b = 1.0;
         } else {
-          r = 0.22;
-          gCol = 0.26;
-          b = 0.34;
+          r = 0.2;
+          gCol = 0.24;
+          b = 0.31;
         }
       }
 
@@ -156,7 +173,7 @@ function PointCloud({
     g.setAttribute("color", new THREE.BufferAttribute(colors, 3));
     g.computeBoundingSphere();
     return g;
-  }, [points, bounds, zScale, startPoint, endPoint, focusWidth]);
+  }, [points, bounds, zScale, startPoint, endPoint, focusWidth, sliceWidth]);
 
   return (
     <points
@@ -275,12 +292,79 @@ function TapeMarkers({
       {tapePoints.map((p, index) => (
         <mesh
           key={`${p.x}-${p.y}-${p.z}-${index}`}
-          position={[p.x - bounds.cx, p.y - bounds.cy, (p.z - bounds.cz) * zScale]}
+          position={[
+            p.x - bounds.cx,
+            p.y - bounds.cy,
+            (p.z - bounds.cz) * zScale,
+          ]}
         >
           <sphereGeometry args={[0.05, 10, 10]} />
           <meshBasicMaterial color="#f59e0b" />
         </mesh>
       ))}
+    </>
+  );
+}
+
+function SliceGuide({
+  startPoint,
+  endPoint,
+  bounds,
+  zScale,
+  sliceWidth,
+}: {
+  startPoint: PickedPoint;
+  endPoint: PickedPoint;
+  bounds: ReturnType<typeof computeBounds>;
+  zScale: number;
+  sliceWidth: number;
+}) {
+  const guidePoints = useMemo(() => {
+    const dx = endPoint.x - startPoint.x;
+    const dy = endPoint.y - startPoint.y;
+    const len = Math.sqrt(dx * dx + dy * dy);
+    if (len === 0) return null;
+
+    const ux = dx / len;
+    const uy = dy / len;
+
+    const nx = -uy;
+    const ny = ux;
+
+    const sLeft: [number, number, number] = [
+      startPoint.x + nx * sliceWidth - bounds.cx,
+      startPoint.y + ny * sliceWidth - bounds.cy,
+      (startPoint.z - bounds.cz) * zScale,
+    ];
+    const eLeft: [number, number, number] = [
+      endPoint.x + nx * sliceWidth - bounds.cx,
+      endPoint.y + ny * sliceWidth - bounds.cy,
+      (endPoint.z - bounds.cz) * zScale,
+    ];
+
+    const sRight: [number, number, number] = [
+      startPoint.x - nx * sliceWidth - bounds.cx,
+      startPoint.y - ny * sliceWidth - bounds.cy,
+      (startPoint.z - bounds.cz) * zScale,
+    ];
+    const eRight: [number, number, number] = [
+      endPoint.x - nx * sliceWidth - bounds.cx,
+      endPoint.y - ny * sliceWidth - bounds.cy,
+      (endPoint.z - bounds.cz) * zScale,
+    ];
+
+    return {
+      left: [sLeft, eLeft] as [number, number, number][],
+      right: [sRight, eRight] as [number, number, number][],
+    };
+  }, [startPoint, endPoint, bounds, zScale, sliceWidth]);
+
+  if (!guidePoints) return null;
+
+  return (
+    <>
+      <Line points={guidePoints.left} color="#f59e0b" lineWidth={0.7} dashed />
+      <Line points={guidePoints.right} color="#f59e0b" lineWidth={0.7} dashed />
     </>
   );
 }
@@ -347,6 +431,7 @@ export default function PointCloudCanvas({
   viewMode,
   viewResetKey,
   focusWidth,
+  sliceWidth,
   tapePoints,
 }: {
   points: Point3[];
@@ -358,10 +443,14 @@ export default function PointCloudCanvas({
   viewMode: ViewMode;
   viewResetKey: number;
   focusWidth: number;
+  sliceWidth: number;
   tapePoints: PickedPoint[];
 }) {
   const bounds = useMemo(() => computeBounds(points), [points]);
-  const gridSize = useMemo(() => Math.max(bounds.sx, bounds.sy, 200) * 2.5, [bounds]);
+  const gridSize = useMemo(
+    () => Math.max(bounds.sx, bounds.sy, 200) * 2.5,
+    [bounds],
+  );
 
   return (
     <main className="absolute inset-0">
@@ -389,6 +478,7 @@ export default function PointCloudCanvas({
           startPoint={startPoint}
           endPoint={endPoint}
           focusWidth={focusWidth}
+          sliceWidth={sliceWidth}
         />
 
         {startPoint ? (
@@ -410,12 +500,21 @@ export default function PointCloudCanvas({
         ) : null}
 
         {startPoint && endPoint ? (
-          <PickLine
-            startPoint={startPoint}
-            endPoint={endPoint}
-            bounds={bounds}
-            zScale={zScale}
-          />
+          <>
+            <PickLine
+              startPoint={startPoint}
+              endPoint={endPoint}
+              bounds={bounds}
+              zScale={zScale}
+            />
+            <SliceGuide
+              startPoint={startPoint}
+              endPoint={endPoint}
+              bounds={bounds}
+              zScale={zScale}
+              sliceWidth={sliceWidth}
+            />
+          </>
         ) : null}
 
         <TapeLine tapePoints={tapePoints} bounds={bounds} zScale={zScale} />

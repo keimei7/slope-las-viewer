@@ -54,57 +54,124 @@ function distance3D(a: PickedPoint, b: PickedPoint) {
   return Math.sqrt(dx * dx + dy * dy + dz * dz);
 }
 
-function buildTapeSamplePoints(
+function clamp(value: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, value));
+}
+
+function computeTapeSamplePoints(
   sourcePoints: Point3[],
   startPoint: PickedPoint | null,
   endPoint: PickedPoint | null,
   divisionCount: number,
   searchRadius: number,
+  sliceWidth: number,
 ): PickedPoint[] {
   if (!startPoint || !endPoint) return [];
-  if (divisionCount < 1) return [];
+  if (divisionCount < 1 || sourcePoints.length === 0) return [];
 
-  const sampled: PickedPoint[] = [];
+  const ax = startPoint.x;
+  const ay = startPoint.y;
+  const az = startPoint.z;
+  const bx = endPoint.x;
+  const by = endPoint.y;
+  const bz = endPoint.z;
 
-  for (let i = 0; i <= divisionCount; i++) {
-    const t = i / divisionCount;
+  const dx = bx - ax;
+  const dy = by - ay;
+  const baseLen = Math.sqrt(dx * dx + dy * dy);
 
-    const targetX = startPoint.x + (endPoint.x - startPoint.x) * t;
-    const targetY = startPoint.y + (endPoint.y - startPoint.y) * t;
-    const targetZ = startPoint.z + (endPoint.z - startPoint.z) * t;
-
-    let nearest: Point3 | null = null;
-    let nearestDistSq = Number.POSITIVE_INFINITY;
-
-    for (const p of sourcePoints) {
-      const dx = p.x - targetX;
-      const dy = p.y - targetY;
-      const dxySq = dx * dx + dy * dy;
-
-      if (dxySq > searchRadius * searchRadius) continue;
-
-      if (dxySq < nearestDistSq) {
-        nearest = p;
-        nearestDistSq = dxySq;
-      }
-    }
-
-    if (nearest) {
-      sampled.push({
-        x: nearest.x,
-        y: nearest.y,
-        z: nearest.z,
-      });
-    } else {
-      sampled.push({
-        x: targetX,
-        y: targetY,
-        z: targetZ,
-      });
-    }
+  if (baseLen === 0) {
+    return [startPoint, endPoint];
   }
 
-  return sampled;
+  const ux = dx / baseLen;
+  const uy = dy / baseLen;
+
+  const samples: PickedPoint[] = [];
+  const step = baseLen / divisionCount;
+  const alongWindow = Math.max(step * 0.5, searchRadius);
+
+  for (let i = 0; i <= divisionCount; i++) {
+    const targetAlong = step * i;
+    const targetX = ax + ux * targetAlong;
+    const targetY = ay + uy * targetAlong;
+    const targetZ = az + ((bz - az) * i) / divisionCount;
+
+    const candidates: Array<{
+      point: Point3;
+      alongError: number;
+      perpDist: number;
+      score: number;
+    }> = [];
+
+    for (const p of sourcePoints) {
+      const px = p.x - ax;
+      const py = p.y - ay;
+
+      const along = px * ux + py * uy;
+      const perpX = px - along * ux;
+      const perpY = py - along * uy;
+      const perpDist = Math.sqrt(perpX * perpX + perpY * perpY);
+      const alongError = Math.abs(along - targetAlong);
+
+      if (along < -searchRadius || along > baseLen + searchRadius) continue;
+      if (alongError > alongWindow) continue;
+      if (perpDist > sliceWidth) continue;
+
+      const score = perpDist * 0.8 + alongError * 0.2;
+      candidates.push({
+        point: p,
+        alongError,
+        perpDist,
+        score,
+      });
+    }
+
+    if (candidates.length === 0) {
+      let fallback: Point3 | null = null;
+      let bestDistSq = Number.POSITIVE_INFINITY;
+
+      for (const p of sourcePoints) {
+        const ddx = p.x - targetX;
+        const ddy = p.y - targetY;
+        const distSq = ddx * ddx + ddy * ddy;
+        if (distSq < bestDistSq && distSq <= searchRadius * searchRadius) {
+          fallback = p;
+          bestDistSq = distSq;
+        }
+      }
+
+      if (fallback) {
+        samples.push({
+          x: fallback.x,
+          y: fallback.y,
+          z: fallback.z,
+        });
+      } else {
+        samples.push({
+          x: targetX,
+          y: targetY,
+          z: targetZ,
+        });
+      }
+
+      continue;
+    }
+
+    candidates.sort((a, b) => a.score - b.score);
+    const top = candidates.slice(0, Math.min(candidates.length, 9));
+
+    const sortedZ = [...top].sort((a, b) => a.point.z - b.point.z);
+    const median = sortedZ[Math.floor(sortedZ.length / 2)];
+
+    samples.push({
+      x: median.point.x,
+      y: median.point.y,
+      z: median.point.z,
+    });
+  }
+
+  return samples;
 }
 
 export default function LasViewer() {
@@ -116,8 +183,8 @@ export default function LasViewer() {
   const [startPoint, setStartPoint] = useState<PickedPoint | null>(null);
   const [endPoint, setEndPoint] = useState<PickedPoint | null>(null);
 
-  const [maxDisplayPoints, setMaxDisplayPoints] = useState(200000);
-  const [zScale, setZScale] = useState(2);
+  const [maxDisplayPoints, setMaxDisplayPoints] = useState(600000);
+  const [zScale, setZScale] = useState(1);
   const [pointSize, setPointSize] = useState(0.008);
   const [viewMode, setViewMode] = useState<ViewMode>("top");
   const [viewResetKey, setViewResetKey] = useState(0);
@@ -125,6 +192,7 @@ export default function LasViewer() {
 
   const [divisionCount, setDivisionCount] = useState(8);
   const [searchRadius, setSearchRadius] = useState(0.1);
+  const [sliceWidth, setSliceWidth] = useState(0.15);
   const [isPinned, setIsPinned] = useState(false);
 
   const displayPoints = useMemo(() => {
@@ -178,14 +246,15 @@ export default function LasViewer() {
   }, [startPoint, endPoint]);
 
   const tapePoints = useMemo(() => {
-    return buildTapeSamplePoints(
+    return computeTapeSamplePoints(
       displayPoints,
       startPoint,
       endPoint,
       divisionCount,
       searchRadius,
+      sliceWidth,
     );
-  }, [displayPoints, startPoint, endPoint, divisionCount, searchRadius]);
+  }, [displayPoints, startPoint, endPoint, divisionCount, searchRadius, sliceWidth]);
 
   const tapeDistance = useMemo(() => {
     if (tapePoints.length < 2) return null;
@@ -269,10 +338,11 @@ export default function LasViewer() {
         viewMode={viewMode}
         viewResetKey={viewResetKey}
         focusWidth={focusWidth}
+        sliceWidth={sliceWidth}
         tapePoints={tapePoints}
       />
 
-      <aside className="absolute left-4 top-4 z-10 w-[340px] rounded-2xl border border-cyan-200/10 bg-slate-900/45 p-4 shadow-2xl backdrop-blur-md">
+      <aside className="absolute left-4 top-4 z-10 w-[360px] rounded-2xl border border-cyan-200/10 bg-slate-900/45 p-4 shadow-2xl backdrop-blur-md">
         <h1 className="text-3xl font-semibold tracking-tight text-cyan-50">
           LAS Viewer
         </h1>
@@ -299,6 +369,7 @@ export default function LasViewer() {
           <div className="text-xs font-semibold uppercase tracking-wide text-cyan-100/80">
             計測点
           </div>
+
           <div className="mt-2 text-sm">
             <div>
               <span className="text-slate-400">始点:</span>{" "}
@@ -368,7 +439,9 @@ export default function LasViewer() {
               max={20}
               step={1}
               value={divisionCount}
-              onChange={(e) => setDivisionCount(Number(e.target.value))}
+              onChange={(e) =>
+                setDivisionCount(clamp(Number(e.target.value), 2, 20))
+              }
               className="mt-1 w-full"
             />
           </div>
@@ -383,7 +456,26 @@ export default function LasViewer() {
               max={1}
               step={0.01}
               value={searchRadius}
-              onChange={(e) => setSearchRadius(Number(e.target.value))}
+              onChange={(e) =>
+                setSearchRadius(clamp(Number(e.target.value), 0.01, 1))
+              }
+              className="mt-1 w-full"
+            />
+          </div>
+
+          <div className="mt-3">
+            <label className="block text-xs text-slate-300">
+              断面スライス幅: {(sliceWidth * 100).toFixed(0)} cm
+            </label>
+            <input
+              type="range"
+              min={0.01}
+              max={1}
+              step={0.01}
+              value={sliceWidth}
+              onChange={(e) =>
+                setSliceWidth(clamp(Number(e.target.value), 0.01, 1))
+              }
               className="mt-1 w-full"
             />
           </div>
@@ -404,26 +496,30 @@ export default function LasViewer() {
             </label>
             <input
               type="range"
-              min={50000}
-              max={500000}
-              step={50000}
+              min={100000}
+              max={2000000}
+              step={100000}
               value={maxDisplayPoints}
-              onChange={(e) => setMaxDisplayPoints(Number(e.target.value))}
+              onChange={(e) =>
+                setMaxDisplayPoints(clamp(Number(e.target.value), 100000, 2000000))
+              }
               className="mt-1 w-full"
             />
           </div>
 
           <div className="mt-3">
             <label className="block text-xs text-slate-300">
-              Z誇張: {zScale.toFixed(1)}x
+              Z誇張: {zScale.toFixed(2)}x
             </label>
             <input
               type="range"
-              min={0.5}
-              max={6}
-              step={0.1}
+              min={1}
+              max={5}
+              step={0.05}
               value={zScale}
-              onChange={(e) => setZScale(Number(e.target.value))}
+              onChange={(e) =>
+                setZScale(clamp(Number(e.target.value), 1, 5))
+              }
               className="mt-1 w-full"
             />
           </div>
@@ -438,7 +534,9 @@ export default function LasViewer() {
               max={0.05}
               step={0.001}
               value={pointSize}
-              onChange={(e) => setPointSize(Number(e.target.value))}
+              onChange={(e) =>
+                setPointSize(clamp(Number(e.target.value), 0.001, 0.05))
+              }
               className="mt-1 w-full"
             />
           </div>
@@ -453,7 +551,9 @@ export default function LasViewer() {
               max={20}
               step={0.5}
               value={focusWidth}
-              onChange={(e) => setFocusWidth(Number(e.target.value))}
+              onChange={(e) =>
+                setFocusWidth(clamp(Number(e.target.value), 1, 20))
+              }
               className="mt-1 w-full"
             />
           </div>
@@ -523,7 +623,9 @@ export default function LasViewer() {
         <div className="text-xs font-semibold uppercase tracking-wide text-cyan-100/80">
           Future Panel
         </div>
-        <h2 className="mt-2 text-xl font-semibold text-cyan-50">展開図 / 図面</h2>
+        <h2 className="mt-2 text-xl font-semibold text-cyan-50">
+          展開図 / 図面
+        </h2>
         <p className="mt-2 text-sm text-slate-300">
           ここに将来、2D展開図プレビュー、分割数、DXF出力などを載せる。
         </p>
