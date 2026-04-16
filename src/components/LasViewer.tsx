@@ -661,6 +661,9 @@ const [guideAngleDeg, setGuideAngleDeg] = useState<number | null>(null);
   const [maxDisplayPoints, setMaxDisplayPoints] = useState(600000);
   const [zScale, setZScale] = useState(1);
   const [pointSize, setPointSize] = useState(0.008);
+const [lineWidthScale, setLineWidthScale] = useState(1);
+const [hitThreshold, setHitThreshold] = useState(0.05);
+
   const [viewMode, setViewMode] = useState<ViewMode>("top");
   const [viewResetKey, setViewResetKey] = useState(0);
   const [focusWidth, setFocusWidth] = useState(6);
@@ -1087,6 +1090,8 @@ setIsPinned(false);
   savedLines={savedLines}
   savedTriangles={savedTriangles}
   selectedLineIds={selectedLineIds}
+  lineWidthScale={lineWidthScale}
+hitThreshold={hitThreshold}
 />
 {points.length === 0 ? (
   <button
@@ -1346,7 +1351,62 @@ setHoverSnapPoint(null);
       className="mt-1 w-full"
     />
   </div>
+<div className="mt-4 rounded-xl border border-white/10 bg-black/15 p-3">
+  <div className="text-xs font-semibold uppercase tracking-wide text-cyan-100/80">
+    操作ミキサー
+  </div>
 
+  <div className="mt-3">
+    <label className="block text-xs text-slate-300">
+      点の大きさ: {pointSize.toFixed(3)}
+    </label>
+    <input
+      type="range"
+      min={0.002}
+      max={0.03}
+      step={0.001}
+      value={pointSize}
+      onChange={(e) =>
+        setPointSize(clamp(Number(e.target.value), 0.002, 0.03))
+      }
+      className="mt-1 w-full"
+    />
+  </div>
+
+  <div className="mt-3">
+    <label className="block text-xs text-slate-300">
+      線の太さ: {lineWidthScale.toFixed(2)}x
+    </label>
+    <input
+      type="range"
+      min={0.6}
+      max={2.5}
+      step={0.1}
+      value={lineWidthScale}
+      onChange={(e) =>
+        setLineWidthScale(clamp(Number(e.target.value), 0.6, 2.5))
+      }
+      className="mt-1 w-full"
+    />
+  </div>
+
+  <div className="mt-3">
+    <label className="block text-xs text-slate-300">
+      当たり判定: {(hitThreshold * 100).toFixed(0)} %
+    </label>
+    <input
+      type="range"
+      min={0.01}
+      max={0.12}
+      step={0.005}
+      value={hitThreshold}
+      onChange={(e) =>
+        setHitThreshold(clamp(Number(e.target.value), 0.01, 0.12))
+      }
+      className="mt-1 w-full"
+    />
+  </div>
+</div>
   <div className="mt-3">
     <label className="block text-xs text-slate-300">
       計測ライン強調幅: {focusWidth.toFixed(1)} m

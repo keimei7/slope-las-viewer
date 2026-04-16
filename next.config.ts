@@ -1,8 +1,8 @@
 import type { NextConfig } from "next";
 const nextConfig = {
   typescript: {
-    ignoreBuildErrors: true,
-  },
+  ignoreBuildErrors: false,
+},
 };
 
 export default nextConfig;
