@@ -21,9 +21,13 @@ export type PickedPoint = {
 type LoadState = "idle" | "loading" | "loaded" | "error";
 type ViewMode = "top" | "angled";
 type SavedLine = {
+  id: string;
+  name: string; // ←追加（ABとか）
   start: PickedPoint;
   end: PickedPoint;
   tapePoints: PickedPoint[];
+  straightLength: number;
+  surfaceLength: number;
 };
 function toPointsFromLasData(data: unknown): Point3[] {
   const rows: Point3[] = [];
@@ -425,6 +429,10 @@ function snapToExistingPoint(
     if (!file) return;
 
     setStatus("loading");
+    setStartPoint(null);
+setEndPoint(null);
+setSavedLines([]);
+setIsPinned(false);
     setErrorMessage("");
     setFileName(file.name);
 
@@ -508,6 +516,95 @@ function snapToExistingPoint(
 </label>
              <div className="mt-2 break-all text-xs text-slate-300">
   {fileName || ""}
+</div>
+<div className="mt-4 rounded-xl border border-white/10 bg-black/15 p-3">
+  <div className="text-xs font-semibold uppercase tracking-wide text-cyan-100/80">
+    計測点
+  </div>
+
+  <div className="mt-2 text-sm">
+    <div>
+      <span className="text-slate-400">始点:</span>{" "}
+      {startPoint
+        ? `${startPoint.x.toFixed(2)}, ${startPoint.y.toFixed(2)}, ${startPoint.z.toFixed(2)}`
+        : "-"}
+    </div>
+    <div className="mt-1">
+      <span className="text-slate-400">終点:</span>{" "}
+      {endPoint
+        ? `${endPoint.x.toFixed(2)}, ${endPoint.y.toFixed(2)}, ${endPoint.z.toFixed(2)}`
+        : "-"}
+    </div>
+    <div className="mt-1">
+      <span className="text-slate-400">直線距離:</span>{" "}
+      {pickedDistance !== null ? `${pickedDistance.toFixed(3)} m` : "-"}
+    </div>
+    <div className="mt-1">
+      <span className="text-slate-400">沿わせ長:</span>{" "}
+      {tapeDistance !== null ? `${tapeDistance.toFixed(3)} m` : "-"}
+    </div>
+  </div>
+
+  <div className="mt-3 flex flex-wrap gap-2">
+    <button
+      type="button"
+      disabled={!startPoint || !endPoint}
+      onClick={() => {
+        if (!startPoint || !endPoint) return;
+
+        const id = crypto.randomUUID();
+        const name = `L${savedLines.length + 1}`;
+
+        setSavedLines((prev) => [
+          ...prev,
+          {
+            id,
+            name,
+            start: startPoint,
+            end: endPoint,
+            tapePoints,
+            straightLength: pickedDistance ?? 0,
+            surfaceLength: tapeDistance ?? 0,
+          },
+        ]);
+      }}
+      className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
+    >
+      この線を保存
+    </button>
+
+    <button
+      type="button"
+      onClick={clearPickedPoints}
+      className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-slate-100 hover:bg-white/10"
+    >
+      点をクリア
+    </button>
+
+    <button
+      type="button"
+      onClick={resetMeasuredPointsOnly}
+      className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-slate-100 hover:bg-white/10"
+    >
+      測点リセット
+    </button>
+  </div>
+
+  <button
+    type="button"
+    onClick={() => setIsPinned((prev) => !prev)}
+    className="mt-2 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-slate-100 hover:bg-white/10"
+  >
+    {isPinned ? "ピン留め解除" : "この2点をピン留め"}
+  </button>
+
+  <div className="mt-2 text-xs text-slate-400">
+    ピン状態: {isPinned ? "固定中" : "未固定"}
+  </div>
+
+  <div className="mt-2 text-xs text-slate-400">
+    保存済み線: {savedLines.length} 本
+  </div>
 </div>
             </div>
 <div className="mt-4 rounded-xl border border-white/10 bg-black/15 p-3">
@@ -762,6 +859,7 @@ function snapToExistingPoint(
                   断面ビュー
                 </div>
 
+
                 <div className="mt-3 h-[360px] rounded-lg border border-white/10 bg-slate-950/70 p-2">
                   <CrossSectionView
   cloudPoints={points}
@@ -772,6 +870,43 @@ function snapToExistingPoint(
 />
                 </div>
               </div>
+              <div className="mt-4 rounded-xl border border-white/10 bg-black/15 p-3">
+  <div className="text-xs font-semibold uppercase tracking-wide text-cyan-100/80">
+    保存線一覧
+  </div>
+
+  <div className="mt-3 space-y-2">
+    {savedLines.length === 0 ? (
+      <div className="text-sm text-slate-400">保存された線はまだありません。</div>
+    ) : (
+      savedLines.map((line) => (
+        <div
+          key={line.id}
+          className="rounded-lg border border-white/10 bg-white/5 p-2"
+        >
+          <div className="flex items-center justify-between gap-3">
+            <div className="text-sm font-medium text-cyan-50">{line.name}</div>
+            <button
+              type="button"
+              onClick={() =>
+                setSavedLines((prev) => prev.filter((item) => item.id !== line.id))
+              }
+              className="rounded border border-white/10 px-2 py-1 text-xs text-slate-300 hover:bg-white/10"
+            >
+              削除
+            </button>
+          </div>
+          <div className="mt-1 text-xs text-slate-400">
+            直線: {line.straightLength.toFixed(3)} m
+          </div>
+          <div className="mt-1 text-xs text-slate-400">
+            沿わせ: {line.surfaceLength.toFixed(3)} m
+          </div>
+        </div>
+      ))
+    )}
+  </div>
+</div>
             </div>
           </div>
 

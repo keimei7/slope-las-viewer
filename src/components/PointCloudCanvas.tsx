@@ -1,7 +1,7 @@
 "use client";
 
 import { Canvas } from "@react-three/fiber";
-import { OrbitControls, Line } from "@react-three/drei";
+import { OrbitControls, Line, Html } from "@react-three/drei";
 import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import type { PickedPoint, Point3 } from "./LasViewer";
@@ -9,9 +9,13 @@ import type { PickedPoint, Point3 } from "./LasViewer";
 type ViewMode = "top" | "angled";
 
 type SavedLine = {
+  id: string;
+  name: string; // ←追加（ABとか）
   start: PickedPoint;
   end: PickedPoint;
   tapePoints: PickedPoint[];
+  straightLength: number;
+  surfaceLength: number;
 };
 
 function computeBounds(points: Point3[]) {
@@ -313,7 +317,70 @@ function TapeMarkers({
     </>
   );
 }
+function SavedLineLabel({
+  line,
+  bounds,
+  zScale,
+}: {
+  line: SavedLine;
+  bounds: ReturnType<typeof computeBounds>;
+  zScale: number;
+}) {
+  const midX = (line.start.x + line.end.x) / 2;
+  const midY = (line.start.y + line.end.y) / 2;
+  const midZ = (line.start.z + line.end.z) / 2;
 
+  return (
+    <Html
+      position={[
+        midX - bounds.cx,
+        midY - bounds.cy,
+        (midZ - bounds.cz) * zScale,
+      ]}
+      center
+    >
+      <div className="rounded bg-black/70 px-2 py-1 text-[11px] text-white whitespace-nowrap shadow">
+        {line.name} / {line.surfaceLength.toFixed(2)}m
+      </div>
+    </Html>
+  );
+}
+
+function SavedLinesLayer({
+  savedLines,
+  bounds,
+  zScale,
+}: {
+  savedLines: SavedLine[];
+  bounds: ReturnType<typeof computeBounds>;
+  zScale: number;
+}) {
+  return (
+    <>
+      {savedLines.map((line) => (
+        <group key={line.id}>
+          <Line
+            points={[
+              [
+                line.start.x - bounds.cx,
+                line.start.y - bounds.cy,
+                (line.start.z - bounds.cz) * zScale,
+              ],
+              [
+                line.end.x - bounds.cx,
+                line.end.y - bounds.cy,
+                (line.end.z - bounds.cz) * zScale,
+              ],
+            ]}
+            color="#22c55e"
+            lineWidth={1}
+          />
+          <SavedLineLabel line={line} bounds={bounds} zScale={zScale} />
+        </group>
+      ))}
+    </>
+  );
+}
 function SliceGuide({
   startPoint,
   endPoint,
@@ -445,7 +512,7 @@ export default function PointCloudCanvas({
   focusWidth,
   sliceWidth,
   tapePoints,
-  savedLines: _savedLines,
+  savedLines,
 }: {
   points: Point3[];
   startPoint: PickedPoint | null;
@@ -530,7 +597,7 @@ export default function PointCloudCanvas({
             />
           </>
         ) : null}
-
+<SavedLinesLayer savedLines={savedLines} bounds={bounds} zScale={zScale} />
         <TapeLine tapePoints={tapePoints} bounds={bounds} zScale={zScale} />
         <TapeMarkers tapePoints={tapePoints} bounds={bounds} zScale={zScale} />
 
