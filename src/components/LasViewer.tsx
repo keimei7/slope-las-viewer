@@ -318,8 +318,8 @@ const [sliceWidth, setSliceWidth] = useState(0.02);     // 2cm
     return total;
   }, [tapePoints]);
 
- function handlePick(point: PickedPoint) {
-  const snapped = snapToExistingPoint(point, savedLines);
+function handlePick(point: PickedPoint) {
+  const snapped = hoverSnapPoint ?? snapToExistingPoint(point, savedLines);
 
   if (isPinned) return;
 
@@ -348,6 +348,31 @@ const [sliceWidth, setSliceWidth] = useState(0.02);     // 2cm
     }
     setViewResetKey((prev) => prev + 1);
   }
+  function findNearestSavedEndpoint(
+  p: PickedPoint,
+  savedLines: SavedLine[],
+  radius = 0.12,
+): PickedPoint | null {
+  let best: PickedPoint | null = null;
+  let bestDist = Infinity;
+
+  for (const line of savedLines) {
+    for (const endpoint of [line.start, line.end]) {
+      const dx = endpoint.x - p.x;
+      const dy = endpoint.y - p.y;
+      const dz = endpoint.z - p.z;
+      const d = Math.sqrt(dx * dx + dy * dy + dz * dz);
+
+      if (d < bestDist && d < radius) {
+        best = endpoint;
+        bestDist = d;
+      }
+    }
+  }
+
+  return best;
+}
+
 function snapToExistingPoint(
   p: PickedPoint,
   savedLines: SavedLine[],
@@ -386,6 +411,15 @@ function snapToExistingPoint(
   }
 
   return best;
+}
+function handleHoverPoint(point: PickedPoint | null) {
+  if (!point) {
+    setHoverSnapPoint(null);
+    return;
+  }
+
+  const nearest = findNearestSavedEndpoint(point, savedLines, 0.12);
+  setHoverSnapPoint(nearest);
 }
   function startResize(side: "left" | "right") {
     function onMove(event: MouseEvent) {
@@ -483,6 +517,8 @@ setIsPinned(false);
         sliceWidth={sliceWidth}
         tapePoints={tapePoints}
           savedLines={savedLines}
+          onHoverPoint={handleHoverPoint}
+hoverSnapPoint={hoverSnapPoint}
 
       />
 
