@@ -702,6 +702,7 @@ setIsPinned(false);
   tapePoints={tapePoints}
   savedLines={savedLines}
   savedTriangles={savedTriangles}
+  selectedLineIds={selectedLineIds}
 />
 
       {!leftCollapsed ? (

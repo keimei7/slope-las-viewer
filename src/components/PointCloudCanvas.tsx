@@ -599,34 +599,42 @@ function SavedLinesLayer({
   onHoverSavedLine,
   bounds,
   zScale,
+  selectedLineIds,
 }: {
   savedLines: SavedLine[];
   hoverLineId: string | null;
   onHoverSavedLine: (lineId: string | null) => void;
   bounds: ReturnType<typeof computeBounds>;
   zScale: number;
+  selectedLineIds: string[];
 }) {
   return (
     <>
       {savedLines.map((line) => (
         <group key={line.id}>
-          <Line
-            points={line.tapePoints.map((p) => [
-              p.x - bounds.cx,
-              p.y - bounds.cy,
-              (p.z - bounds.cz) * zScale,
-            ])}
-            color="#4ade80"
-            lineWidth={hoverLineId === line.id ? 2.4 : 1.8}
-            onPointerOver={(e) => {
-              e.stopPropagation();
-              onHoverSavedLine(line.id);
-            }}
-            onPointerOut={(e) => {
-              e.stopPropagation();
-              onHoverSavedLine(null);
-            }}
-          />
+        <Line
+  points={line.tapePoints.map((p) => [
+    p.x - bounds.cx,
+    p.y - bounds.cy,
+    (p.z - bounds.cz) * zScale,
+  ])}
+  color={
+    selectedLineIds.includes(line.id)
+      ? "#ef4444"
+      : hoverLineId === line.id
+        ? "#f59e0b"
+        : "#4ade80"
+  }
+  lineWidth={selectedLineIds.includes(line.id) ? 2.8 : hoverLineId === line.id ? 2.4 : 1.8}
+  onPointerOver={(e) => {
+    e.stopPropagation();
+    onHoverSavedLine(line.id);
+  }}
+  onPointerOut={(e) => {
+    e.stopPropagation();
+    onHoverSavedLine(null);
+  }}
+/>
           <SavedLineLabel line={line} bounds={bounds} zScale={zScale} />
         </group>
       ))}
@@ -786,6 +794,7 @@ export default function PointCloudCanvas({
   onHoverTriangle,
   hoverLineId,          // ←追加
   hoverTriangleId,      // ←追加
+  selectedLineIds,
   zScale,
   pointSize,
   viewMode,
@@ -795,8 +804,9 @@ export default function PointCloudCanvas({
   tapePoints,
   savedLines,
   savedTriangles,
+  
 }: {
-
+selectedLineIds: string[];
   points: Point3[];
   startPoint: PickedPoint | null;
   endPoint: PickedPoint | null;
@@ -903,6 +913,7 @@ hoverTriangleId: string | null;
   onHoverSavedLine={onHoverSavedLine}
   bounds={bounds}
   zScale={zScale}
+  selectedLineIds={selectedLineIds}
 />
 
         <TapeLine tapePoints={tapePoints} bounds={bounds} zScale={zScale} />
