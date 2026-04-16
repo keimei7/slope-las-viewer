@@ -1,7 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ChangeEvent } from "react";
-import { load } from "@loaders.gl/core";
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";import { load } from "@loaders.gl/core";
 import { LASLoader } from "@loaders.gl/las";
 import PointCloudCanvas from "./PointCloudCanvas";
 import CrossSectionView from "./CrossSectionView";
@@ -562,6 +561,7 @@ function handlePrintDevelopment() {
 export default function LasViewer() {
   const [points, setPoints] = useState<Point3[]>([]);
   const [fileName, setFileName] = useState("");
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [status, setStatus] = useState<LoadState>("idle");
   const [errorMessage, setErrorMessage] = useState("");
 
@@ -966,7 +966,15 @@ setIsPinned(false);
   savedTriangles={savedTriangles}
   selectedLineIds={selectedLineIds}
 />
-
+{points.length === 0 ? (
+  <button
+    type="button"
+    onClick={() => fileInputRef.current?.click()}
+    className="absolute inset-0 z-[1]"
+    aria-label="点群ファイルを開く"
+    title="クリックして点群ファイルを開く"
+  />
+) : null}
       {!leftCollapsed ? (
         <aside
           style={{ width: leftWidth }}
@@ -996,15 +1004,21 @@ setIsPinned(false);
               <label className="mb-2 block text-xs font-medium uppercase tracking-wide text-cyan-100/80">
                 LASファイル
               </label>
-             <label className="inline-flex cursor-pointer items-center rounded-lg bg-cyan-500/20 px-3 py-2 text-sm font-medium text-cyan-50 hover:bg-cyan-500/30">
+            <button
+  type="button"
+  onClick={() => fileInputRef.current?.click()}
+  className="inline-flex items-center rounded-lg bg-cyan-500/20 px-3 py-2 text-sm font-medium text-cyan-50 hover:bg-cyan-500/30"
+>
   ファイルを選択
-  <input
-    type="file"
-    accept=".las,.laz"
-    onChange={handleFileChange}
-    className="hidden"
-  />
-</label>
+</button>
+
+<input
+  ref={fileInputRef}
+  type="file"
+  accept=".las,.laz"
+  onChange={handleFileChange}
+  className="hidden"
+/>
              <div className="mt-2 break-all text-xs text-slate-300">
   {fileName || ""}
 </div>
