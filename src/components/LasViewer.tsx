@@ -29,6 +29,14 @@ type SavedLine = {
   straightLength: number;
   surfaceLength: number;
 };
+type SavedTriangle = {
+  id: string;
+  name: string;
+  lineIds: [string, string, string];
+  lineNames: [string, string, string];
+  edgeLengths: [number, number, number];
+  area: number;
+};
 function toPointsFromLasData(data: unknown): Point3[] {
   const rows: Point3[] = [];
 
@@ -65,6 +73,11 @@ function distance3D(a: PickedPoint, b: PickedPoint) {
 
 function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));
+}
+function computeHeronArea(a: number, b: number, c: number) {
+  const s = (a + b + c) / 2;
+  const value = s * (s - a) * (s - b) * (s - c);
+  return value > 0 ? Math.sqrt(value) : 0;
 }
 
 function computeTapeSamplePoints(
@@ -247,6 +260,8 @@ const [sliceWidth, setSliceWidth] = useState(0.02);     // 2cm
   const [rightCollapsed, setRightCollapsed] = useState(false);
 const [hoverSnapPoint, setHoverSnapPoint] = useState<PickedPoint | null>(null);
   const [savedLines, setSavedLines] = useState<SavedLine[]>([]);
+const [selectedLineIds, setSelectedLineIds] = useState<string[]>([]);
+const [savedTriangles, setSavedTriangles] = useState<SavedTriangle[]>([]);
 
   const displayPoints = useMemo(() => {
     if (points.length <= maxDisplayPoints) {
@@ -348,6 +363,64 @@ function handlePick(point: PickedPoint) {
     }
     setViewResetKey((prev) => prev + 1);
   }
+  function toggleLineSelection(lineId: string) {
+  setSelectedLineIds((prev) => {
+    if (prev.includes(lineId)) {
+      return prev.filter((id) => id !== lineId);
+    }
+    if (prev.length >= 3) {
+      return [...prev.slice(1), lineId];
+    }
+    return [...prev, lineId];
+  });
+}
+function createTriangleFromSelectedLines() {
+  if (selectedLineIds.length !== 3) return;
+
+  const selectedLines = selectedLineIds
+    .map((id) => savedLines.find((line) => line.id === id))
+    .filter(Boolean) as SavedLine[];
+
+  if (selectedLines.length !== 3) return;
+
+  const edgeLengths: [number, number, number] = [
+    selectedLines[0].surfaceLength,
+    selectedLines[1].surfaceLength,
+    selectedLines[2].surfaceLength,
+  ];
+
+  const area = computeHeronArea(
+    edgeLengths[0],
+    edgeLengths[1],
+    edgeLengths[2],
+  );
+
+  const triangleId = crypto.randomUUID();
+  const triangleName = `三角形${savedTriangles.length + 1}`;
+
+  setSavedTriangles((prev) => [
+    ...prev,
+    {
+      id: triangleId,
+      name: triangleName,
+      lineIds: [
+        selectedLines[0].id,
+        selectedLines[1].id,
+        selectedLines[2].id,
+      ],
+      lineNames: [
+        selectedLines[0].name,
+        selectedLines[1].name,
+        selectedLines[2].name,
+      ],
+      edgeLengths,
+      area,
+    },
+  ]);
+
+  setSelectedLineIds([]);
+}
+
   function findNearestSavedEndpoint(
   p: PickedPoint,
   savedLines: SavedLine[],
@@ -898,7 +971,57 @@ setIsPinned(false);
               <div className="rounded-xl border border-dashed border-white/10 bg-black/10 p-4 text-sm text-slate-400">
                 図面プレビュー領域
               </div>
+<div className="mt-4 rounded-xl border border-white/10 bg-black/15 p-3">
+  <div className="text-xs font-semibold uppercase tracking-wide text-cyan-100/80">
+    三角形一覧
+  </div>
 
+  <div className="mt-3 space-y-2">
+    {savedTriangles.length === 0 ? (
+      <div className="text-sm text-slate-400">
+        三角形はまだ作成されていません。
+      </div>
+    ) : (
+      savedTriangles.map((triangle) => (
+        <div
+          key={triangle.id}
+          className="rounded-lg border border-white/10 bg-white/5 p-2"
+        >
+          <div className="flex items-center justify-between gap-3">
+            <div className="text-sm font-medium text-cyan-50">
+              {triangle.name}
+            </div>
+            <button
+              type="button"
+              onClick={() =>
+                setSavedTriangles((prev) =>
+                  prev.filter((item) => item.id !== triangle.id),
+                )
+              }
+              className="rounded border border-white/10 px-2 py-1 text-xs text-slate-300 hover:bg-white/10"
+            >
+              削除
+            </button>
+          </div>
+
+          <div className="mt-2 text-xs text-slate-400">
+            {triangle.lineNames[0]}: {triangle.edgeLengths[0].toFixed(3)} m
+          </div>
+          <div className="mt-1 text-xs text-slate-400">
+            {triangle.lineNames[1]}: {triangle.edgeLengths[1].toFixed(3)} m
+          </div>
+          <div className="mt-1 text-xs text-slate-400">
+            {triangle.lineNames[2]}: {triangle.edgeLengths[2].toFixed(3)} m
+          </div>
+
+          <div className="mt-2 text-sm font-medium text-emerald-300">
+            ヘロン面積: {triangle.area.toFixed(3)} ㎡
+          </div>
+        </div>
+      ))
+    )}
+  </div>
+</div>
               <div className="mt-4 rounded-xl border border-white/10 bg-black/15 p-3">
                 <div className="text-xs font-semibold uppercase tracking-wide text-cyan-100/80">
                   断面ビュー
@@ -919,35 +1042,64 @@ setIsPinned(false);
   <div className="text-xs font-semibold uppercase tracking-wide text-cyan-100/80">
     保存線一覧
   </div>
+  <div className="mt-3 flex items-center gap-2">
+  <div className="text-xs text-slate-400">
+    選択中: {selectedLineIds.length} / 3
+  </div>
+  <button
+    type="button"
+    disabled={selectedLineIds.length !== 3}
+    onClick={createTriangleFromSelectedLines}
+    className="rounded border border-white/10 bg-white/5 px-2 py-1 text-xs text-slate-200 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
+  >
+    三角形を作成
+  </button>
+</div>
 
   <div className="mt-3 space-y-2">
     {savedLines.length === 0 ? (
       <div className="text-sm text-slate-400">保存された線はまだありません。</div>
     ) : (
       savedLines.map((line) => (
-        <div
-          key={line.id}
-          className="rounded-lg border border-white/10 bg-white/5 p-2"
-        >
-          <div className="flex items-center justify-between gap-3">
-            <div className="text-sm font-medium text-cyan-50">{line.name}</div>
-            <button
-              type="button"
-              onClick={() =>
-                setSavedLines((prev) => prev.filter((item) => item.id !== line.id))
-              }
-              className="rounded border border-white/10 px-2 py-1 text-xs text-slate-300 hover:bg-white/10"
-            >
-              削除
-            </button>
-          </div>
-          <div className="mt-1 text-xs text-slate-400">
-            直線: {line.straightLength.toFixed(3)} m
-          </div>
-          <div className="mt-1 text-xs text-slate-400">
-            沿わせ: {line.surfaceLength.toFixed(3)} m
-          </div>
-        </div>
+       <div
+  key={line.id}
+  className={`rounded-lg border p-2 ${
+    selectedLineIds.includes(line.id)
+      ? "border-cyan-400 bg-cyan-400/10"
+      : "border-white/10 bg-white/5"
+  }`}
+>
+  <div className="flex items-center justify-between gap-3">
+    <button
+      type="button"
+      onClick={() => toggleLineSelection(line.id)}
+      className="text-left"
+    >
+      <div className="text-sm font-medium text-cyan-50">{line.name}</div>
+      <div className="mt-1 text-xs text-slate-400">
+        {selectedLineIds.includes(line.id) ? "選択中" : "クリックで選択"}
+      </div>
+    </button>
+
+    <button
+      type="button"
+      onClick={() => {
+        setSavedLines((prev) => prev.filter((item) => item.id !== line.id));
+        setSelectedLineIds((prev) => prev.filter((id) => id !== line.id));
+      }}
+      className="rounded border border-white/10 px-2 py-1 text-xs text-slate-300 hover:bg-white/10"
+    >
+      削除
+    </button>
+  </div>
+
+  <div className="mt-2 text-xs text-slate-400">
+    直線: {line.straightLength.toFixed(3)} m
+  </div>
+  <div className="mt-1 text-xs text-slate-400">
+    沿わせ: {line.surfaceLength.toFixed(3)} m
+  </div>
+</div>
       ))
     )}
   </div>
