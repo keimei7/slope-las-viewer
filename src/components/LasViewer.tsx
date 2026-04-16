@@ -1303,18 +1303,16 @@ setIsPinned(false);
           <button
   type="button"
   onClick={(e) => {
-    e.stopPropagation();
+  e.stopPropagation();
 
-    setSavedLines((prev) => prev.filter((item) => item.id !== line.id));
-    setSelectedLineIds((prev) => prev.filter((id) => id !== line.id));
-    setSavedTriangles((prev) =>
-      prev.filter((triangle) => !triangle.lineIds.includes(line.id)),
-    );
+  setSavedTriangles((prev) =>
+    prev.filter((item) => item.id !== triangle.id)
+  );
 
-    if (hoverLineId === line.id) {
-      setHoverLineId(null);
-    }
-  }}
+  if (hoverTriangleId === triangle.id) {
+    setHoverTriangleId(null);
+  }
+}}
   className="rounded border border-white/10 px-2 py-1 text-xs text-slate-300 hover:bg-white/10"
 >
   削除
