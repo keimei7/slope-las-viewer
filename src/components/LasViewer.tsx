@@ -20,7 +20,11 @@ export type PickedPoint = {
 
 type LoadState = "idle" | "loading" | "loaded" | "error";
 type ViewMode = "top" | "angled";
-
+type SavedLine = {
+  start: PickedPoint;
+  end: PickedPoint;
+  tapePoints: PickedPoint[];
+};
 function toPointsFromLasData(data: unknown): Point3[] {
   const rows: Point3[] = [];
 
@@ -229,14 +233,16 @@ export default function LasViewer() {
   const [focusWidth, setFocusWidth] = useState(6);
 
   const [divisionCount, setDivisionCount] = useState(8);
-  const [searchRadius, setSearchRadius] = useState(0.01);
-const [sliceWidth, setSliceWidth] = useState(0.02);
+const [searchRadius, setSearchRadius] = useState(0.01); // 1cm
+const [sliceWidth, setSliceWidth] = useState(0.02);     // 2cm
   const [isPinned, setIsPinned] = useState(false);
 
   const [leftWidth, setLeftWidth] = useState(360);
   const [rightWidth, setRightWidth] = useState(380);
   const [leftCollapsed, setLeftCollapsed] = useState(false);
   const [rightCollapsed, setRightCollapsed] = useState(false);
+
+  const [savedLines, setSavedLines] = useState<SavedLine[]>([]);
 
   const displayPoints = useMemo(() => {
     if (points.length <= maxDisplayPoints) {
@@ -308,18 +314,19 @@ const [sliceWidth, setSliceWidth] = useState(0.02);
     return total;
   }, [tapePoints]);
 
-  function handlePick(point: PickedPoint) {
-    if (isPinned) return;
+ function handlePick(point: PickedPoint) {
+  const snapped = snapToExistingPoint(point, savedLines);
 
-    if (!startPoint || endPoint) {
-      setStartPoint(point);
-      setEndPoint(null);
-      return;
-    }
+  if (isPinned) return;
 
-    setEndPoint(point);
+  if (!startPoint || endPoint) {
+    setStartPoint(snapped);
+    setEndPoint(null);
+    return;
   }
 
+  setEndPoint(snapped);
+}
   function clearPickedPoints() {
     setStartPoint(null);
     setEndPoint(null);
@@ -337,7 +344,35 @@ const [sliceWidth, setSliceWidth] = useState(0.02);
     }
     setViewResetKey((prev) => prev + 1);
   }
+function snapToExistingPoint(
+  p: PickedPoint,
+  savedLines: SavedLine[],
+  radius = 0.05
+): PickedPoint {
+  
+  let best = p;
+  let bestDist = Infinity;
 
+  const allPoints: PickedPoint[] = [];
+
+  for (const line of savedLines) {
+    allPoints.push(line.start, line.end, ...line.tapePoints);
+  }
+
+  for (const sp of allPoints) {
+    const dx = sp.x - p.x;
+    const dy = sp.y - p.y;
+    const dz = sp.z - p.z;
+    const d = Math.sqrt(dx * dx + dy * dy + dz * dz);
+
+    if (d < bestDist && d < radius) {
+      best = sp;
+      bestDist = d;
+    }
+  }
+
+  return best;
+}
   function startResize(side: "left" | "right") {
     function onMove(event: MouseEvent) {
       if (side === "left") {
@@ -429,6 +464,8 @@ const [sliceWidth, setSliceWidth] = useState(0.02);
         focusWidth={focusWidth}
         sliceWidth={sliceWidth}
         tapePoints={tapePoints}
+          savedLines={savedLines}
+
       />
 
       {!leftCollapsed ? (
@@ -460,21 +497,42 @@ const [sliceWidth, setSliceWidth] = useState(0.02);
               <label className="mb-2 block text-xs font-medium uppercase tracking-wide text-cyan-100/80">
                 LASファイル
               </label>
-              <input
-                type="file"
-                accept=".las,.laz"
-                onChange={handleFileChange}
-                className="block w-full text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-cyan-500/20 file:px-3 file:py-2 file:text-sm file:font-medium file:text-cyan-50 hover:file:bg-cyan-500/30"
-              />
-              <div className="mt-2 break-all text-xs text-slate-300">
-                {fileName || "未選択"}
-              </div>
+             <label className="inline-flex cursor-pointer items-center rounded-lg bg-cyan-500/20 px-3 py-2 text-sm font-medium text-cyan-50 hover:bg-cyan-500/30">
+  ファイルを選択
+  <input
+    type="file"
+    accept=".las,.laz"
+    onChange={handleFileChange}
+    className="hidden"
+  />
+</label>
+             <div className="mt-2 break-all text-xs text-slate-300">
+  {fileName || ""}
+</div>
             </div>
 
             <div className="mt-4 rounded-xl border border-white/10 bg-black/15 p-3">
               <div className="text-xs font-semibold uppercase tracking-wide text-cyan-100/80">
                 計測点
               </div>
+              <button
+  type="button"
+  onClick={() => {
+    if (!startPoint || !endPoint) return;
+
+    setSavedLines((prev) => [
+      ...prev,
+      {
+        start: startPoint,
+        end: endPoint,
+        tapePoints,
+      },
+    ]);
+  }}
+  className="mt-2 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm hover:bg-white/10"
+>
+  この線を保存
+</button>
 
               <div className="mt-2 text-sm">
                 <div>
@@ -539,17 +597,17 @@ const [sliceWidth, setSliceWidth] = useState(0.02);
                 <label className="block text-xs text-slate-300">
                   分割数: {divisionCount}
                 </label>
-                <input
-                  type="range"
-                  min={2}
-                  max={20}
-                  step={1}
-                  value={divisionCount}
-                  onChange={(e) =>
-                    setDivisionCount(clamp(Number(e.target.value), 2, 20))
-                  }
-                  className="mt-1 w-full"
-                />
+              <input
+  type="range"
+  min={1}
+  max={20}
+  step={1}
+  value={divisionCount}
+  onChange={(e) =>
+    setDivisionCount(clamp(Number(e.target.value), 1, 20))
+  }
+  className="mt-1 w-full"
+/>
               </div>
 
               <div className="mt-3">
@@ -574,16 +632,16 @@ step={0.0025}
                   断面スライス幅: {(sliceWidth * 100).toFixed(0)} cm
                 </label>
                 <input
-                  type="range"
-                  min={0.01}
-max={0.1}
-step={0.005}
-                  value={sliceWidth}
-                 onChange={(e) =>
-  setSliceWidth(clamp(Number(e.target.value), 0.01, 0.1))
-}
-                  className="mt-1 w-full"
-                />
+  type="range"
+  min={0.005}
+  max={0.05}
+  step={0.0025}
+  value={searchRadius}
+  onChange={(e) =>
+    setSearchRadius(clamp(Number(e.target.value), 0.005, 0.05))
+  }
+  className="mt-1 w-full"
+/>
               </div>
 
               <div className="mt-3 text-xs text-slate-400">
