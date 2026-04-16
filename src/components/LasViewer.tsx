@@ -1301,16 +1301,24 @@ setIsPinned(false);
             {triangle.name}
           </div>
           <button
-            type="button"
-            onClick={() =>
-              setSavedTriangles((prev) =>
-                prev.filter((item) => item.id !== triangle.id),
-              )
-            }
-            className="rounded border border-white/10 px-2 py-1 text-xs text-slate-300 hover:bg-white/10"
-          >
-            削除
-          </button>
+  type="button"
+  onClick={(e) => {
+    e.stopPropagation();
+
+    setSavedLines((prev) => prev.filter((item) => item.id !== line.id));
+    setSelectedLineIds((prev) => prev.filter((id) => id !== line.id));
+    setSavedTriangles((prev) =>
+      prev.filter((triangle) => !triangle.lineIds.includes(line.id)),
+    );
+
+    if (hoverLineId === line.id) {
+      setHoverLineId(null);
+    }
+  }}
+  className="rounded border border-white/10 px-2 py-1 text-xs text-slate-300 hover:bg-white/10"
+>
+  削除
+</button>
         </div>
 
         {/* 辺情報 */}
@@ -1370,74 +1378,85 @@ setIsPinned(false);
   </button>
 </div>
 
-  <div className="mt-3 space-y-2">
-    {savedLines.length === 0 ? (
-      <div className="text-sm text-slate-400">保存された線はまだありません。</div>
-    ) : (
-      savedLines.map((line) => (
-     <div
-  key={line.id}
-  onMouseEnter={() => setHoverLineId(line.id)}
-  onMouseLeave={() => setHoverLineId(null)}
-  onClick={() => toggleLineSelection(line.id)}
-  className={`cursor-pointer rounded-lg border p-2 ${
-    selectedLineIds.includes(line.id)
-      ? "border-cyan-400 bg-cyan-400/10"
-      : "border-white/10 bg-white/5"
-  }`}
->
-  <div className="flex items-center justify-between gap-3">
-    <button
-      type="button"
-      onClick={() => toggleLineSelection(line.id)}
-      className="text-left"
-    >
-      <div className="text-sm font-medium text-cyan-50">{line.name}</div>
-      <div className="mt-1 text-xs text-slate-400">
-        {selectedLineIds.includes(line.id) ? "選択中" : "クリックで選択"}
-      </div>
-    </button>
+<div className="mt-3 space-y-2">
+  {savedLines.length === 0 ? (
+    <div className="text-sm text-slate-400">
+      保存された線はまだありません。
+    </div>
+  ) : (
+    savedLines.map((line) => {
+      const isSelected = selectedLineIds.includes(line.id);
 
-    <button
-      type="button"
-     onClick={() => {
-  if (!startPoint || !endPoint || isDuplicateLine) return;
+      return (
+        <div
+          key={line.id}
+          onMouseEnter={() => setHoverLineId(line.id)}
+          onMouseLeave={() => setHoverLineId(null)}
+          onClick={() => toggleLineSelection(line.id)}
+          className={`cursor-pointer rounded-lg border p-2 ${
+            isSelected
+              ? "border-cyan-400 bg-cyan-400/10"
+              : "border-white/10 bg-white/5"
+          }`}
+        >
+          <div className="flex items-center justify-between gap-3">
 
-  const id = crypto.randomUUID();
-  const name = `L${savedLines.length + 1}`;
+            {/* 左：線情報（クリックで選択） */}
+            <div className="text-left">
+              <div className="text-sm font-medium text-cyan-50">
+                {line.name}
+              </div>
+              <div className="mt-1 text-xs text-slate-400">
+                {isSelected ? "選択中" : "クリックで選択"}
+              </div>
+            </div>
 
-  setSavedLines((prev) => [
-    ...prev,
-    {
-      id,
-      name,
-      start: startPoint,
-      end: endPoint,
-      tapePoints,
-      straightLength: pickedDistance ?? 0,
-      surfaceLength: tapeDistance ?? 0,
-    },
-  ]);
+            {/* 右：削除ボタン */}
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
 
-  setStartPoint(null);
-  setEndPoint(null);
-}}
-      className="rounded border border-white/10 px-2 py-1 text-xs text-slate-300 hover:bg-white/10"
-    >
-      削除
-    </button>
-  </div>
+                // 線削除
+                setSavedLines((prev) =>
+                  prev.filter((item) => item.id !== line.id),
+                );
 
-  <div className="mt-2 text-xs text-slate-400">
-    直線: {line.straightLength.toFixed(3)} m
-  </div>
-  <div className="mt-1 text-xs text-slate-400">
-    沿わせ: {line.surfaceLength.toFixed(3)} m
-  </div>
+                // 選択状態からも削除
+                setSelectedLineIds((prev) =>
+                  prev.filter((id) => id !== line.id),
+                );
+
+                // この線を使ってる三角形も削除
+                setSavedTriangles((prev) =>
+                  prev.filter(
+                    (triangle) => !triangle.lineIds.includes(line.id),
+                  ),
+                );
+
+                // hover中なら解除
+                if (hoverLineId === line.id) {
+                  setHoverLineId(null);
+                }
+              }}
+              className="rounded border border-white/10 px-2 py-1 text-xs text-slate-300 hover:bg-white/10"
+            >
+              削除
+            </button>
+          </div>
+
+          {/* 長さ表示 */}
+          <div className="mt-2 text-xs text-slate-400">
+            直線: {line.straightLength.toFixed(3)} m
+          </div>
+          <div className="mt-1 text-xs text-slate-400">
+            沿わせ: {line.surfaceLength.toFixed(3)} m
+          </div>
+        </div>
+      );
+    })
+  )}
 </div>
-      ))
-    )}
-  </div>
 </div>
             </div>
           </div>
