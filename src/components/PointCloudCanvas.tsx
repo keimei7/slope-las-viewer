@@ -625,7 +625,7 @@ function SavedLinesLayer({
         ? "#f59e0b"
         : "#4ade80"
   }
-  lineWidth={selectedLineIds.includes(line.id) ? 2.8 : hoverLineId === line.id ? 2.4 : 1.8}
+lineWidth={selectedLineIds.includes(line.id) ? 3.2 : hoverLineId === line.id ? 2.8 : 2.2}
   onPointerOver={(e) => {
     e.stopPropagation();
     onHoverSavedLine(line.id);

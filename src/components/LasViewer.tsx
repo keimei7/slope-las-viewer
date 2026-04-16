@@ -306,23 +306,40 @@ function Triangle2DView({
   const vertices = getTriangleVerticesFromLines(lines);
   if (!vertices) return null;
 
-  const [A, B, C] = projectTriangleTo2D(
-    vertices[0],
-    vertices[1],
-    vertices[2],
+  const pts = projectTriangleTo2D(vertices[0], vertices[1], vertices[2]);
+
+  const minX = Math.min(...pts.map((p) => p.x));
+  const maxX = Math.max(...pts.map((p) => p.x));
+  const minY = Math.min(...pts.map((p) => p.y));
+  const maxY = Math.max(...pts.map((p) => p.y));
+
+  const pad = 24;
+  const width = 260;
+  const height = 220;
+
+  const spanX = Math.max(maxX - minX, 0.001);
+  const spanY = Math.max(maxY - minY, 0.001);
+  const scale = Math.min(
+    (width - pad * 2) / spanX,
+    (height - pad * 2) / spanY,
   );
 
-  const scale = 40;
+  const tx = (x: number) => pad + (x - minX) * scale;
+  const ty = (y: number) => height - pad - (y - minY) * scale;
+
+  const A = pts[0];
+  const B = pts[1];
+  const C = pts[2];
 
   return (
-    <svg width="220" height="220">
+    <svg
+      viewBox={`0 0 ${width} ${height}`}
+      className="h-[220px] w-full rounded-lg bg-slate-950/40"
+      preserveAspectRatio="xMidYMid meet"
+    >
       <polygon
-        points={`
-          ${A.x * scale},${200 - A.y * scale}
-          ${B.x * scale},${200 - B.y * scale}
-          ${C.x * scale},${200 - C.y * scale}
-        `}
-        fill="rgba(34,211,238,0.2)"
+        points={`${tx(A.x)},${ty(A.y)} ${tx(B.x)},${ty(B.y)} ${tx(C.x)},${ty(C.y)}`}
+        fill="rgba(34,211,238,0.18)"
         stroke="#22d3ee"
         strokeWidth="2"
       />
@@ -552,8 +569,8 @@ if (uniqueIds.size !== 3) return;
 function snapToExistingPoint(
   p: PickedPoint,
   savedLines: SavedLine[],
-  endpointRadius = 0.15,
-  tapePointRadius = 0.04,
+  endpointRadius = 0.2,
+tapePointRadius = 0.05,
 ): PickedPoint {
   let best = p;
   let bestDist = Infinity;
@@ -594,7 +611,7 @@ function handleHoverPoint(point: PickedPoint | null) {
     return;
   }
 
-  const nearest = findNearestSavedEndpoint(point, savedLines, 0.12);
+const nearest = findNearestSavedEndpoint(point, savedLines, 0.18);
   setHoverSnapPoint(nearest);
 }
   function startResize(side: "left" | "right") {
@@ -802,13 +819,6 @@ setIsPinned(false);
       この線を保存
     </button>
 
-    <button
-      type="button"
-      onClick={clearPickedPoints}
-      className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-slate-100 hover:bg-white/10"
-    >
-      点をクリア
-    </button>
 
     <button
       type="button"
@@ -1181,9 +1191,12 @@ setIsPinned(false);
       <div className="text-sm text-slate-400">保存された線はまだありません。</div>
     ) : (
       savedLines.map((line) => (
-       <div
+     <div
   key={line.id}
-  className={`rounded-lg border p-2 ${
+  onMouseEnter={() => setHoverLineId(line.id)}
+  onMouseLeave={() => setHoverLineId(null)}
+  onClick={() => toggleLineSelection(line.id)}
+  className={`cursor-pointer rounded-lg border p-2 ${
     selectedLineIds.includes(line.id)
       ? "border-cyan-400 bg-cyan-400/10"
       : "border-white/10 bg-white/5"
