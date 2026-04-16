@@ -739,49 +739,45 @@ function CameraRig({
   viewMode: ViewMode;
   viewResetKey: number;
 }) {
-  const controlsRef = useRef<React.ElementRef<typeof OrbitControls> | null>(
-    null,
-  );
-
+  const controlsRef = useRef<any>(null);
   const bounds = useMemo(() => computeBounds(points), [points]);
 
   useEffect(() => {
     const controls = controlsRef.current;
     if (!controls || points.length === 0) return;
 
+    const camera = controls.object;
     const maxSpan = Math.max(bounds.sx, bounds.sy, bounds.sz * zScale, 1);
 
-    controls.object.up.set(0, 0, 1);
-    controls.target.set(0, 0, 0);
+    camera.up.set(0, 0, 1);
 
     if (viewMode === "top") {
-      controls.object.position.set(0, 0, maxSpan * 1.8);
-      controls.enableRotate = false;
+      camera.position.set(0, 0, maxSpan * 1.8);
     } else {
-      controls.object.position.set(
+      camera.position.set(
         maxSpan * 1.0,
         -maxSpan * 1.0,
         maxSpan * 0.75,
       );
-      controls.enableRotate = true;
     }
 
-    controls.enablePan = true;
-    controls.enableZoom = true;
+    controls.target.set(0, 0, 0);
     controls.update();
-  }, [bounds, points.length, viewMode, viewResetKey, zScale]);
+  }, [points, bounds, zScale, viewMode, viewResetKey]);
 
   return (
-    <OrbitControls
-      ref={controlsRef}
-      makeDefault
-      enablePan
-      enableZoom
-      zoomSpeed={1}
-      rotateSpeed={0.8}
-      panSpeed={0.8}
-    />
-  );
+  <OrbitControls
+    ref={controlsRef}
+    enableDamping={false}
+    enableRotate={viewMode !== "top"}
+    rotateSpeed={0.8}
+    zoomSpeed={1.15}
+    panSpeed={0.8}
+    screenSpacePanning={false}
+    minPolarAngle={0}
+    maxPolarAngle={Math.PI / 2}
+  />
+);
 }
 export default function PointCloudCanvas({
   points,
