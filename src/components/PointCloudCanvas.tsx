@@ -332,16 +332,16 @@ function SavedLineLabel({
 
   return (
     <Html
-      position={[
-        midX - bounds.cx,
-        midY - bounds.cy,
-        (midZ - bounds.cz) * zScale,
-      ]}
-      center
-    >
-      <div className="rounded bg-black/70 px-2 py-1 text-[11px] text-white whitespace-nowrap shadow">
-        {line.name} / {line.surfaceLength.toFixed(2)}m
-      </div>
+  position={[
+    midX - bounds.cx,
+    midY - bounds.cy,
+    (midZ - bounds.cz) * zScale + 0.08,
+  ]}
+  center
+>
+     <div className="rounded bg-black/70 px-1.5 py-0.5 text-[9px] text-white whitespace-nowrap shadow">
+  {line.name} / {line.surfaceLength.toFixed(2)}m
+</div>
     </Html>
   );
 }
@@ -359,22 +359,22 @@ function SavedLinesLayer({
     <>
       {savedLines.map((line) => (
         <group key={line.id}>
-          <Line
-            points={[
-              [
-                line.start.x - bounds.cx,
-                line.start.y - bounds.cy,
-                (line.start.z - bounds.cz) * zScale,
-              ],
-              [
-                line.end.x - bounds.cx,
-                line.end.y - bounds.cy,
-                (line.end.z - bounds.cz) * zScale,
-              ],
-            ]}
-            color="#22c55e"
-            lineWidth={1}
-          />
+         <Line
+  points={[
+    [
+      line.start.x - bounds.cx,
+      line.start.y - bounds.cy,
+      (line.start.z - bounds.cz) * zScale,
+    ],
+    [
+      line.end.x - bounds.cx,
+      line.end.y - bounds.cy,
+      (line.end.z - bounds.cz) * zScale,
+    ],
+  ]}
+  color="#4ade80"
+  lineWidth={1.8}
+/>
           <SavedLineLabel line={line} bounds={bounds} zScale={zScale} />
         </group>
       ))}
