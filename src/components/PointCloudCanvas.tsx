@@ -343,6 +343,137 @@ function TapeMarkers({
     </>
   );
 }
+function HoverSavedLineDetails({
+  savedLines,
+  hoverLineId,
+  bounds,
+  zScale,
+}: {
+  savedLines: SavedLine[];
+  hoverLineId: string | null;
+  bounds: ReturnType<typeof computeBounds>;
+  zScale: number;
+}) {
+  if (!hoverLineId) return null;
+
+  const line = savedLines.find((item) => item.id === hoverLineId);
+  if (!line) return null;
+
+  return (
+    <>
+      <mesh
+        position={[
+          line.start.x - bounds.cx,
+          line.start.y - bounds.cy,
+          (line.start.z - bounds.cz) * zScale,
+        ]}
+      >
+        <sphereGeometry args={[0.055, 10, 10]} />
+        <meshBasicMaterial color="#22c55e" />
+      </mesh>
+
+      <mesh
+        position={[
+          line.end.x - bounds.cx,
+          line.end.y - bounds.cy,
+          (line.end.z - bounds.cz) * zScale,
+        ]}
+      >
+        <sphereGeometry args={[0.055, 10, 10]} />
+        <meshBasicMaterial color="#a3e635" />
+      </mesh>
+
+      {line.tapePoints.map((p, index) => (
+        <mesh
+          key={`${line.id}-tp-${index}`}
+          position={[
+            p.x - bounds.cx,
+            p.y - bounds.cy,
+            (p.z - bounds.cz) * zScale,
+          ]}
+        >
+          <sphereGeometry args={[0.03, 8, 8]} />
+          <meshBasicMaterial color="#f59e0b" />
+        </mesh>
+      ))}
+    </>
+  );
+}
+function HoverTriangleDetails({
+  savedTriangles,
+  savedLines,
+  hoverTriangleId,
+  bounds,
+  zScale,
+}: {
+  savedTriangles: {
+    id: string;
+    name: string;
+    lineIds: [string, string, string];
+    lineNames: [string, string, string];
+    edgeLengths: [number, number, number];
+    area: number;
+  }[];
+  savedLines: SavedLine[];
+  hoverTriangleId: string | null;
+  bounds: ReturnType<typeof computeBounds>;
+  zScale: number;
+}) {
+  if (!hoverTriangleId) return null;
+
+  const triangle = savedTriangles.find((item) => item.id === hoverTriangleId);
+  if (!triangle) return null;
+
+  const relatedLines = triangle.lineIds
+    .map((id) => savedLines.find((line) => line.id === id))
+    .filter(Boolean) as SavedLine[];
+
+  return (
+    <>
+      {relatedLines.map((line) =>
+        line.tapePoints.map((p, index) => (
+          <mesh
+            key={`${triangle.id}-${line.id}-tp-${index}`}
+            position={[
+              p.x - bounds.cx,
+              p.y - bounds.cy,
+              (p.z - bounds.cz) * zScale,
+            ]}
+          >
+            <sphereGeometry args={[0.03, 8, 8]} />
+            <meshBasicMaterial color="#38bdf8" />
+          </mesh>
+        )),
+      )}
+
+      {relatedLines.flatMap((line, idx) => [
+        <mesh
+          key={`${triangle.id}-${idx}-start`}
+          position={[
+            line.start.x - bounds.cx,
+            line.start.y - bounds.cy,
+            (line.start.z - bounds.cz) * zScale,
+          ]}
+        >
+          <sphereGeometry args={[0.055, 10, 10]} />
+          <meshBasicMaterial color="#f43f5e" />
+        </mesh>,
+        <mesh
+          key={`${triangle.id}-${idx}-end`}
+          position={[
+            line.end.x - bounds.cx,
+            line.end.y - bounds.cy,
+            (line.end.z - bounds.cz) * zScale,
+          ]}
+        >
+          <sphereGeometry args={[0.055, 10, 10]} />
+          <meshBasicMaterial color="#fb7185" />
+        </mesh>,
+      ])}
+    </>
+  );
+}
+
 function SavedLineLabel({
   line,
   bounds,
@@ -373,10 +504,14 @@ function SavedLineLabel({
 
 function SavedLinesLayer({
   savedLines,
+  hoverLineId,
+  onHoverSavedLine,
   bounds,
   zScale,
 }: {
   savedLines: SavedLine[];
+  hoverLineId: string | null;
+  onHoverSavedLine: (lineId: string | null) => void;
   bounds: ReturnType<typeof computeBounds>;
   zScale: number;
 }) {
@@ -384,15 +519,23 @@ function SavedLinesLayer({
     <>
       {savedLines.map((line) => (
         <group key={line.id}>
-     <Line
-  points={line.tapePoints.map((p) => [
-    p.x - bounds.cx,
-    p.y - bounds.cy,
-    (p.z - bounds.cz) * zScale,
-  ])}
-  color="#4ade80"
-  lineWidth={1.8}
-/>
+          <Line
+            points={line.tapePoints.map((p) => [
+              p.x - bounds.cx,
+              p.y - bounds.cy,
+              (p.z - bounds.cz) * zScale,
+            ])}
+            color="#4ade80"
+            lineWidth={hoverLineId === line.id ? 2.4 : 1.8}
+            onPointerOver={(e) => {
+              e.stopPropagation();
+              onHoverSavedLine(line.id);
+            }}
+            onPointerOut={(e) => {
+              e.stopPropagation();
+              onHoverSavedLine(null);
+            }}
+          />
           <SavedLineLabel line={line} bounds={bounds} zScale={zScale} />
         </group>
       ))}
@@ -548,6 +691,10 @@ export default function PointCloudCanvas({
   onPickPoint,
   onHoverPoint,
   hoverSnapPoint,
+  onHoverSavedLine,
+  onHoverTriangle,
+  hoverLineId,          // ←追加
+  hoverTriangleId,      // ←追加
   zScale,
   pointSize,
   viewMode,
@@ -556,7 +703,9 @@ export default function PointCloudCanvas({
   sliceWidth,
   tapePoints,
   savedLines,
+  savedTriangles,
 }: {
+
   points: Point3[];
   startPoint: PickedPoint | null;
   endPoint: PickedPoint | null;
@@ -564,6 +713,8 @@ export default function PointCloudCanvas({
   onHoverPoint: (p: PickedPoint | null) => void;
   hoverSnapPoint: PickedPoint | null;
   zScale: number;
+  hoverLineId: string | null;
+hoverTriangleId: string | null;
   pointSize: number;
   viewMode: ViewMode;
   viewResetKey: number;
@@ -571,6 +722,16 @@ export default function PointCloudCanvas({
   sliceWidth: number;
   tapePoints: PickedPoint[];
   savedLines: SavedLine[];
+    onHoverSavedLine: (lineId: string | null) => void;
+  onHoverTriangle: (triangleId: string | null) => void;
+    savedTriangles: {
+    id: string;
+    name: string;
+    lineIds: [string, string, string];
+    lineNames: [string, string, string];
+    edgeLengths: [number, number, number];
+    area: number;
+  }[];
 }) {
 
   const bounds = useMemo(() => computeBounds(points), [points]);
@@ -645,10 +806,30 @@ export default function PointCloudCanvas({
           </>
         ) : null}
 <HoverSnapMarker point={hoverSnapPoint} bounds={bounds} zScale={zScale} />
-<SavedLinesLayer savedLines={savedLines} bounds={bounds} zScale={zScale} />
+<SavedLinesLayer
+  savedLines={savedLines}
+  hoverLineId={hoverLineId}
+  onHoverSavedLine={onHoverSavedLine}
+  bounds={bounds}
+  zScale={zScale}
+/>
+
         <TapeLine tapePoints={tapePoints} bounds={bounds} zScale={zScale} />
         <TapeMarkers tapePoints={tapePoints} bounds={bounds} zScale={zScale} />
+<HoverSavedLineDetails
+  savedLines={savedLines}
+  hoverLineId={hoverLineId}
+  bounds={bounds}
+  zScale={zScale}
+/>
 
+<HoverTriangleDetails
+  savedTriangles={savedTriangles}
+  savedLines={savedLines}
+  hoverTriangleId={hoverTriangleId}
+  bounds={bounds}
+  zScale={zScale}
+/>
         <CameraRig
           points={points}
           zScale={zScale}

@@ -262,6 +262,8 @@ const [hoverSnapPoint, setHoverSnapPoint] = useState<PickedPoint | null>(null);
   const [savedLines, setSavedLines] = useState<SavedLine[]>([]);
 const [selectedLineIds, setSelectedLineIds] = useState<string[]>([]);
 const [savedTriangles, setSavedTriangles] = useState<SavedTriangle[]>([]);
+const [hoverLineId, setHoverLineId] = useState<string | null>(null);
+const [hoverTriangleId, setHoverTriangleId] = useState<string | null>(null);
 
   const displayPoints = useMemo(() => {
     if (points.length <= maxDisplayPoints) {
@@ -584,13 +586,17 @@ setIsPinned(false);
 
   return (
     <div className="relative h-screen w-screen overflow-hidden bg-slate-950 text-slate-100">
-      <PointCloudCanvas
+     <PointCloudCanvas
   points={displayPoints}
   startPoint={startPoint}
   endPoint={endPoint}
   onPickPoint={handlePick}
   onHoverPoint={handleHoverPoint}
   hoverSnapPoint={hoverSnapPoint}
+  onHoverSavedLine={setHoverLineId}
+  onHoverTriangle={setHoverTriangleId}
+  hoverLineId={hoverLineId}
+  hoverTriangleId={hoverTriangleId}
   zScale={zScale}
   pointSize={pointSize}
   viewMode={viewMode}
@@ -599,6 +605,7 @@ setIsPinned(false);
   sliceWidth={sliceWidth}
   tapePoints={tapePoints}
   savedLines={savedLines}
+  savedTriangles={savedTriangles}
 />
 
       {!leftCollapsed ? (
@@ -991,9 +998,11 @@ setIsPinned(false);
     ) : (
       savedTriangles.map((triangle) => (
         <div
-          key={triangle.id}
-          className="rounded-lg border border-white/10 bg-white/5 p-2"
-        >
+  key={triangle.id}
+  onMouseEnter={() => setHoverTriangleId(triangle.id)}
+  onMouseLeave={() => setHoverTriangleId(null)}
+  className="rounded-lg border border-white/10 bg-white/5 p-2"
+>
           <div className="flex items-center justify-between gap-3">
             <div className="text-sm font-medium text-cyan-50">
               {triangle.name}
