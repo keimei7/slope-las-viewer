@@ -108,6 +108,7 @@ function PointCloud({
   zScale,
   pointSize,
   onPick,
+  onHover,
   startPoint,
   endPoint,
   focusWidth,
@@ -117,11 +118,13 @@ function PointCloud({
   zScale: number;
   pointSize: number;
   onPick: (point: PickedPoint) => void;
+  onHover: (point: PickedPoint | null) => void;
   startPoint: PickedPoint | null;
   endPoint: PickedPoint | null;
   focusWidth: number;
   sliceWidth: number;
 }) {
+  
   const bounds = useMemo(() => computeBounds(points), [points]);
 
   const geometry = useMemo(() => {
@@ -183,22 +186,45 @@ function PointCloud({
 
   return (
     <points
-      geometry={geometry}
-      onClick={(event) => {
-        event.stopPropagation();
+  geometry={geometry}
+  onPointerMove={(event) => {
+    event.stopPropagation();
 
-        if (typeof event.index !== "number") return;
+    if (typeof event.index !== "number") {
+      onHover(null);
+      return;
+    }
 
-        const picked = points[event.index];
-        if (!picked) return;
+    const picked = points[event.index];
+    if (!picked) {
+      onHover(null);
+      return;
+    }
 
-        onPick({
-          x: picked.x,
-          y: picked.y,
-          z: picked.z,
-        });
-      }}
-    >
+    onHover({
+      x: picked.x,
+      y: picked.y,
+      z: picked.z,
+    });
+  }}
+  onPointerOut={() => {
+    onHover(null);
+  }}
+  onClick={(event) => {
+    event.stopPropagation();
+
+    if (typeof event.index !== "number") return;
+
+    const picked = points[event.index];
+    if (!picked) return;
+
+    onPick({
+      x: picked.x,
+      y: picked.y,
+      z: picked.z,
+    });
+  }}
+>
       <pointsMaterial
         size={pointSize}
         sizeAttenuation={false}
@@ -373,6 +399,30 @@ function SavedLinesLayer({
     </>
   );
 }
+function HoverSnapMarker({
+  point,
+  bounds,
+  zScale,
+}: {
+  point: PickedPoint | null;
+  bounds: ReturnType<typeof computeBounds>;
+  zScale: number;
+}) {
+  if (!point) return null;
+
+  return (
+    <mesh
+      position={[
+        point.x - bounds.cx,
+        point.y - bounds.cy,
+        (point.z - bounds.cz) * zScale,
+      ]}
+    >
+      <sphereGeometry args={[0.06, 12, 12]} />
+      <meshBasicMaterial color="#eab308" />
+    </mesh>
+  );
+}
 function SliceGuide({
   startPoint,
   endPoint,
@@ -491,12 +541,13 @@ function CameraRig({
     />
   );
 }
-
 export default function PointCloudCanvas({
   points,
   startPoint,
   endPoint,
   onPickPoint,
+  onHoverPoint,
+  hoverSnapPoint,
   zScale,
   pointSize,
   viewMode,
@@ -510,6 +561,8 @@ export default function PointCloudCanvas({
   startPoint: PickedPoint | null;
   endPoint: PickedPoint | null;
   onPickPoint: (p: PickedPoint) => void;
+  onHoverPoint: (p: PickedPoint | null) => void;
+  hoverSnapPoint: PickedPoint | null;
   zScale: number;
   pointSize: number;
   viewMode: ViewMode;
@@ -519,6 +572,7 @@ export default function PointCloudCanvas({
   tapePoints: PickedPoint[];
   savedLines: SavedLine[];
 }) {
+
   const bounds = useMemo(() => computeBounds(points), [points]);
   const gridSize = useMemo(
     () => Math.max(bounds.sx, bounds.sy, 200) * 2.5,
@@ -544,15 +598,16 @@ export default function PointCloudCanvas({
         />
 
         <PointCloud
-          points={points}
-          zScale={zScale}
-          pointSize={pointSize}
-          onPick={onPickPoint}
-          startPoint={startPoint}
-          endPoint={endPoint}
-          focusWidth={focusWidth}
-          sliceWidth={sliceWidth}
-        />
+  points={points}
+  zScale={zScale}
+  pointSize={pointSize}
+  onPick={onPickPoint}
+  onHover={onHoverPoint}
+  startPoint={startPoint}
+  endPoint={endPoint}
+  focusWidth={focusWidth}
+  sliceWidth={sliceWidth}
+/>
 
         {startPoint ? (
           <Marker
@@ -589,6 +644,7 @@ export default function PointCloudCanvas({
             />
           </>
         ) : null}
+<HoverSnapMarker point={hoverSnapPoint} bounds={bounds} zScale={zScale} />
 <SavedLinesLayer savedLines={savedLines} bounds={bounds} zScale={zScale} />
         <TapeLine tapePoints={tapePoints} bounds={bounds} zScale={zScale} />
         <TapeMarkers tapePoints={tapePoints} bounds={bounds} zScale={zScale} />
