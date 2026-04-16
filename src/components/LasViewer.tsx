@@ -19,6 +19,7 @@ export type PickedPoint = {
 
 type LoadState = "idle" | "loading" | "loaded" | "error";
 type ViewMode = "top" | "angled";
+type GuideMode = "horizontal" | "vertical" | "angled" | "free";
 type SavedLine = {
   id: string;
   name: string; // ←追加（ABとか）
@@ -73,6 +74,35 @@ function distance3D(a: PickedPoint, b: PickedPoint) {
 
 function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));
+}
+function getGuideInfo(start: PickedPoint, hover: PickedPoint) {
+  const dx = hover.x - start.x;
+  const dy = hover.y - start.y;
+
+  const angleRad = Math.atan2(dy, dx);
+  let angleDeg = (angleRad * 180) / Math.PI;
+  if (angleDeg < 0) angleDeg += 360;
+
+  const normalized = angleDeg % 180;
+
+  const horizontalThreshold = 12;
+  const verticalThreshold = 12;
+
+  const isHorizontal =
+    normalized <= horizontalThreshold ||
+    normalized >= 180 - horizontalThreshold;
+
+  const isVertical = Math.abs(normalized - 90) <= verticalThreshold;
+
+  if (isHorizontal) {
+    return { mode: "horizontal" as const, angleDeg };
+  }
+
+  if (isVertical) {
+    return { mode: "vertical" as const, angleDeg };
+  }
+
+  return { mode: "angled" as const, angleDeg };
 }
 function computeHeronArea(a: number, b: number, c: number) {
   const s = (a + b + c) / 2;
@@ -283,9 +313,9 @@ if (top.length > 1) {
 }
 
 samples.push({
-  x: chosen.point.x,
-  y: chosen.point.y,
-  z: chosen.point.z,
+  x: targetX,          // ←直線維持
+  y: targetY,          // ←直線維持
+  z: chosen.point.z,   // ←高さだけ沿わせ
 });
   }
 
@@ -567,6 +597,9 @@ export default function LasViewer() {
 
   const [startPoint, setStartPoint] = useState<PickedPoint | null>(null);
   const [endPoint, setEndPoint] = useState<PickedPoint | null>(null);
+const [hoverPoint, setHoverPoint] = useState<PickedPoint | null>(null);
+const [guideMode, setGuideMode] = useState<GuideMode>("free");
+const [guideAngleDeg, setGuideAngleDeg] = useState<number | null>(null);
 
   const [maxDisplayPoints, setMaxDisplayPoints] = useState(600000);
   const [zScale, setZScale] = useState(1);
@@ -851,13 +884,26 @@ tapePointRadius = 0.05,
   return best;
 }
 function handleHoverPoint(point: PickedPoint | null) {
+  setHoverPoint(point);
+
   if (!point) {
     setHoverSnapPoint(null);
+    setGuideMode("free");
+    setGuideAngleDeg(null);
     return;
   }
 
-const nearest = findNearestSavedEndpoint(point, savedLines, 0.18);
+  const nearest = findNearestSavedEndpoint(point, savedLines, 0.18);
   setHoverSnapPoint(nearest);
+
+  if (startPoint) {
+    const guide = getGuideInfo(startPoint, nearest ?? point);
+    setGuideMode(guide.mode);
+    setGuideAngleDeg(guide.angleDeg);
+  } else {
+    setGuideMode("free");
+    setGuideAngleDeg(null);
+  }
 }
   function startResize(side: "left" | "right") {
     function onMove(event: MouseEvent) {
@@ -944,13 +990,16 @@ setIsPinned(false);
 
   return (
     <div className="relative h-screen w-screen overflow-hidden bg-slate-950 text-slate-100">
-     <PointCloudCanvas
+   <PointCloudCanvas
   points={displayPoints}
   startPoint={startPoint}
   endPoint={endPoint}
   onPickPoint={handlePick}
   onHoverPoint={handleHoverPoint}
   hoverSnapPoint={hoverSnapPoint}
+  hoverPoint={hoverPoint}
+  guideMode={guideMode}
+  guideAngleDeg={guideAngleDeg}
   onHoverSavedLine={setHoverLineId}
   onHoverTriangle={setHoverTriangleId}
   hoverLineId={hoverLineId}
@@ -1114,6 +1163,26 @@ setIsPinned(false);
   <div className="mt-2 text-xs text-slate-400">
     保存済み線: {savedLines.length} 本
   </div>
+  {startPoint ? (
+  <div className="mt-3 rounded-lg border border-cyan-400/20 bg-cyan-400/5 p-2 text-xs">
+    <div className="text-cyan-200">
+      ガイド:{" "}
+      {guideMode === "horizontal"
+        ? "水平候補"
+        : guideMode === "vertical"
+          ? "垂直候補"
+          : guideMode === "angled"
+            ? "斜め候補"
+            : "待機中"}
+    </div>
+    <div className="mt-1 text-slate-400">
+      角度: {guideAngleDeg !== null ? `${guideAngleDeg.toFixed(1)}°` : "-"}
+    </div>
+    <div className="mt-1 text-slate-500">
+      hover: {hoverPoint ? "あり" : "なし"}
+    </div>
+  </div>
+) : null}
 </div>
             </div>
 <div className="mt-4 rounded-xl border border-white/10 bg-black/15 p-3">

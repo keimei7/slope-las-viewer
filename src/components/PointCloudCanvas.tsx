@@ -277,7 +277,7 @@ function PointCloud({
   }, [points, bounds, zScale, startPoint, endPoint, focusWidth, sliceWidth]);
 
   return (
-    <points
+   <points
   geometry={geometry}
   onPointerMove={(event) => {
     event.stopPropagation();
@@ -666,6 +666,61 @@ function HoverSnapMarker({
     </mesh>
   );
 }
+function GuidePreviewLine({
+  startPoint,
+  hoverPoint,
+  guideMode,
+  guideAngleDeg,
+  bounds,
+  zScale,
+}: {
+  startPoint: PickedPoint | null;
+  hoverPoint: PickedPoint | null;
+  guideMode: "horizontal" | "vertical" | "angled" | "free";
+  guideAngleDeg: number | null;
+  bounds: ReturnType<typeof computeBounds>;
+  zScale: number;
+}) {
+  if (!startPoint || !hoverPoint) return null;
+
+  let previewX = hoverPoint.x;
+  let previewY = hoverPoint.y;
+
+  if (guideMode === "horizontal") {
+    previewY = startPoint.y;
+  } else if (guideMode === "vertical") {
+    previewX = startPoint.x;
+  } else if (guideMode === "angled" && guideAngleDeg !== null) {
+    const dx = hoverPoint.x - startPoint.x;
+    const dy = hoverPoint.y - startPoint.y;
+    const len = Math.sqrt(dx * dx + dy * dy);
+
+    const angleRad = (guideAngleDeg * Math.PI) / 180;
+    previewX = startPoint.x + Math.cos(angleRad) * len;
+    previewY = startPoint.y + Math.sin(angleRad) * len;
+  }
+
+  return (
+    <Line
+      points={[
+        [
+          startPoint.x - bounds.cx,
+          startPoint.y - bounds.cy,
+          (startPoint.z - bounds.cz) * zScale,
+        ],
+        [
+          previewX - bounds.cx,
+          previewY - bounds.cy,
+          (hoverPoint.z - bounds.cz) * zScale,
+        ],
+      ]}
+      color="#f43f5e"
+      lineWidth={1.2}
+      dashed
+    />
+  );
+}
+
 function SliceGuide({
   startPoint,
   endPoint,
@@ -797,10 +852,13 @@ export default function PointCloudCanvas({
   onPickPoint,
   onHoverPoint,
   hoverSnapPoint,
+  hoverPoint,
+  guideMode,
+  guideAngleDeg,
   onHoverSavedLine,
   onHoverTriangle,
-  hoverLineId,          // ←追加
-  hoverTriangleId,      // ←追加
+  hoverLineId,
+  hoverTriangleId,
   selectedLineIds,
   zScale,
   pointSize,
@@ -811,7 +869,6 @@ export default function PointCloudCanvas({
   tapePoints,
   savedLines,
   savedTriangles,
-  
 }: {
 selectedLineIds: string[];
   points: Point3[];
@@ -822,6 +879,9 @@ selectedLineIds: string[];
   hoverSnapPoint: PickedPoint | null;
   zScale: number;
   hoverLineId: string | null;
+  hoverPoint: PickedPoint | null;
+guideMode: "horizontal" | "vertical" | "angled" | "free";
+guideAngleDeg: number | null;
 hoverTriangleId: string | null;
   pointSize: number;
   viewMode: ViewMode;
@@ -914,6 +974,14 @@ hoverTriangleId: string | null;
           </>
         ) : null}
 <HoverSnapMarker point={hoverSnapPoint} bounds={bounds} zScale={zScale} />
+<GuidePreviewLine
+  startPoint={startPoint}
+  hoverPoint={hoverPoint}
+  guideMode={guideMode}
+  guideAngleDeg={guideAngleDeg}
+  bounds={bounds}
+  zScale={zScale}
+/>
 <SavedLinesLayer
   savedLines={savedLines}
   hoverLineId={hoverLineId}
