@@ -699,23 +699,25 @@ function GuidePreviewLine({
   }
 
   return (
-    <Line
-      points={[
-        [
-          startPoint.x - bounds.cx,
-          startPoint.y - bounds.cy,
-          (startPoint.z - bounds.cz) * zScale,
-        ],
-        [
-          previewX - bounds.cx,
-          previewY - bounds.cy,
-          (hoverPoint.z - bounds.cz) * zScale,
-        ],
-      ]}
-      color="#f43f5e"
-      lineWidth={1.2}
-      dashed
-    />
+   <Line
+  points={[
+    [
+      startPoint.x - bounds.cx,
+      startPoint.y - bounds.cy,
+      (startPoint.z - bounds.cz) * zScale,
+    ],
+    [
+      previewX - bounds.cx,
+      previewY - bounds.cy,
+      (hoverPoint.z - bounds.cz) * zScale,
+    ],
+  ]}
+  color="#fb7185"
+  lineWidth={0.8}
+  dashed
+  dashSize={0.08}
+  gapSize={0.05}
+/>
   );
 }
 
@@ -964,14 +966,16 @@ hoverTriangleId: string | null;
   />
 ) : null}
 <HoverSnapMarker point={hoverSnapPoint} bounds={bounds} zScale={zScale} />
-<GuidePreviewLine
-  startPoint={startPoint}
-  hoverPoint={hoverPoint}
-  guideMode={guideMode}
-  guideAngleDeg={guideAngleDeg}
-  bounds={bounds}
-  zScale={zScale}
-/>
+{startPoint && !endPoint && hoverPoint ? (
+  <GuidePreviewLine
+    startPoint={startPoint}
+    hoverPoint={hoverPoint}
+    guideMode={guideMode}
+    guideAngleDeg={guideAngleDeg}
+    bounds={bounds}
+    zScale={zScale}
+  />
+) : null}
 <SavedLinesLayer
   savedLines={savedLines}
   hoverLineId={hoverLineId}

@@ -176,6 +176,7 @@ function computeTapeSamplePoints(
   divisionCount: number,
   searchRadius: number,
   sliceWidth: number,
+  guideMode: GuideMode,
 ): PickedPoint[] {
   if (!startPoint || !endPoint) return [];
   if (divisionCount < 1 || sourcePoints.length === 0) return [];
@@ -197,7 +198,7 @@ function computeTapeSamplePoints(
 
   const ux = dx / baseLen;
   const uy = dy / baseLen;
-
+const horizontalness = Math.abs(ux); 
   const samples: PickedPoint[] = [];
   const step = baseLen / divisionCount;
   const alongWindow = Math.max(step * 0.5, searchRadius);
@@ -312,10 +313,20 @@ if (top.length > 1) {
   }
 }
 
+let lockRatio = 0.45;
+
+if (guideMode === "horizontal") {
+  lockRatio = 0.9;
+} else if (guideMode === "vertical") {
+  lockRatio = 0.15;
+} else if (guideMode === "angled") {
+  lockRatio = 0.45;
+}
+
 samples.push({
-  x: targetX,          // ←直線維持
-  y: targetY,          // ←直線維持
-  z: chosen.point.z,   // ←高さだけ沿わせ
+  x: targetX * lockRatio + chosen.point.x * (1 - lockRatio),
+  y: targetY * lockRatio + chosen.point.y * (1 - lockRatio),
+  z: chosen.point.z,
 });
   }
 
@@ -706,7 +717,7 @@ const displayPoints = useMemo(() => {
     return distance3D(startPoint, endPoint);
   }, [startPoint, endPoint]);
 
- const tapePoints = useMemo(() => {
+const tapePoints = useMemo(() => {
   return computeTapeSamplePoints(
     points,
     startPoint,
@@ -714,8 +725,9 @@ const displayPoints = useMemo(() => {
     divisionCount,
     searchRadius,
     sliceWidth,
+    guideMode,
   );
-}, [points, startPoint, endPoint, divisionCount, searchRadius, sliceWidth]);
+}, [points, startPoint, endPoint, divisionCount, searchRadius, sliceWidth, guideMode]);
   const tapeDistance = useMemo(() => {
     if (tapePoints.length < 2) return null;
 
@@ -734,10 +746,14 @@ function handlePick(point: PickedPoint) {
   if (!startPoint || endPoint) {
     setStartPoint(snapped);
     setEndPoint(null);
+    setHoverPoint(null);
+    setHoverSnapPoint(null);
     return;
   }
 
   setEndPoint(snapped);
+  setHoverPoint(null);
+  setHoverSnapPoint(null);
 }
   function clearPickedPoints() {
     setStartPoint(null);
@@ -1118,9 +1134,12 @@ setIsPinned(false);
             end: endPoint,
             tapePoints,
             straightLength: pickedDistance ?? 0,
-            surfaceLength: tapeDistance ?? 0,
-          },
-        ]);
+    surfaceLength: tapeDistance ?? 0,
+  },
+]);
+
+setHoverPoint(null);
+setHoverSnapPoint(null);
       }}
      className={`rounded-lg border border-white/10 px-3 py-1.5 text-sm
   ${
@@ -1138,6 +1157,7 @@ setIsPinned(false);
       type="button"
       onClick={resetMeasuredPointsOnly}
       className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-slate-100 hover:bg-white/10"
+
     >
       測点リセット
     </button>
@@ -1160,14 +1180,8 @@ setIsPinned(false);
     ピン状態: {isPinned ? "固定中" : "未固定"}
   </div>
 
-  <div className="mt-2 text-xs text-slate-400">
-    保存済み線: {savedLines.length} 本
-  </div>
-  {startPoint ? (
-  <div className="mt-3 rounded-lg border border-cyan-400/20 bg-cyan-400/5 p-2 text-xs">
-   
-  </div>
-) : null}
+  
+  
 </div>
             </div>
 <div className="mt-4 rounded-xl border border-white/10 bg-black/15 p-3">
