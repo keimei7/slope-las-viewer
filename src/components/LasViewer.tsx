@@ -168,7 +168,6 @@ function projectTriangleTo2D(a: Point3, b: Point3, c: Point3) {
     { x: cosC * AC, y: sinC * AC },
   ];
 }
-
 function computeTapeSamplePoints(
   sourcePoints: Point3[],
   startPoint: PickedPoint | null,
@@ -202,9 +201,8 @@ function computeTapeSamplePoints(
   const samples: PickedPoint[] = [];
   const step = baseLen / divisionCount;
 
-  // UI上の searchRadius は m 前提で使う
-  // 探索帯を締めたいので along 側は step と searchRadius の中間くらいで制御
-  const alongWindow = Math.max(step * 0.35, searchRadius * 0.75);
+  // 近傍半径は「前後方向の探索余裕」として使う
+  const alongWindow = Math.max(searchRadius, step * 0.2);
 
   for (let i = 0; i <= divisionCount; i++) {
     const targetAlong = step * i;
@@ -230,33 +228,25 @@ function computeTapeSamplePoints(
       const perpDist = Math.sqrt(perpX * perpX + perpY * perpY);
       const alongError = Math.abs(along - targetAlong);
 
-      // 始終点の前後に広がりすぎない
+      // 始終点の前後に searchRadius だけ余裕
       if (along < -searchRadius || along > baseLen + searchRadius) continue;
 
-      // 目標位置から離れすぎる点は切る
+      // 目標位置からの前後探索は searchRadius ベース
       if (alongError > alongWindow) continue;
 
-      // 横ブレを厳しく抑える
-      const maxPerp =
-        guideMode === "horizontal"
-          ? Math.min(sliceWidth * 0.45, searchRadius * 1.2)
-          : guideMode === "vertical"
-            ? Math.min(sliceWidth * 0.75, searchRadius * 1.8)
-            : Math.min(sliceWidth * 0.55, searchRadius * 1.35);
-
-      if (perpDist > maxPerp) continue;
+      // 断面幅は 1cm 固定で、横ブレを厳しく制限
+      if (perpDist > sliceWidth) continue;
 
       const targetZError = Math.abs(p.z - targetZ);
 
-      // 横ブレ優先で締める
       const perpWeight =
         guideMode === "horizontal"
           ? 0.9
           : guideMode === "angled"
             ? 0.88
-            : 0.76;
+            : 0.78;
 
-      const alongWeight = guideMode === "vertical" ? 0.1 : 0.08;
+      const alongWeight = guideMode === "vertical" ? 0.12 : 0.08;
       const zWeight = 1 - perpWeight - alongWeight;
 
       const score =
@@ -282,18 +272,18 @@ function computeTapeSamplePoints(
         const ddy = p.y - targetY;
         const distXY = Math.sqrt(ddx * ddx + ddy * ddy);
 
-        // fallback も横ブレしすぎる点は拾わない
-        const maxFallbackDist =
-          guideMode === "horizontal"
-            ? sliceWidth * 0.7
-            : guideMode === "angled"
-              ? sliceWidth * 0.85
-              : sliceWidth;
+        // fallback でも横方向は 1cm に抑える
+        if (distXY > sliceWidth) continue;
 
-        if (distXY > maxFallbackDist) continue;
+        // 前後方向は searchRadius だけ許す
+        const px = p.x - ax;
+        const py = p.y - ay;
+        const along = px * ux + py * uy;
+        const alongError = Math.abs(along - targetAlong);
+        if (alongError > Math.max(searchRadius, step * 0.35)) continue;
 
         const dz = Math.abs(p.z - targetZ);
-        const fallbackScore = distXY * 0.85 + dz * 0.15;
+        const fallbackScore = distXY * 0.8 + alongError * 0.1 + dz * 0.1;
 
         if (fallbackScore < bestScore) {
           fallback = p;
@@ -302,19 +292,19 @@ function computeTapeSamplePoints(
       }
 
       if (fallback) {
-        let fallbackLockRatio = 0.5;
+        let lockRatio = 0.55;
 
         if (guideMode === "horizontal") {
-          fallbackLockRatio = 0.96;
+          lockRatio = 0.96;
         } else if (guideMode === "vertical") {
-          fallbackLockRatio = 0.3;
+          lockRatio = 0.32;
         } else if (guideMode === "angled") {
-          fallbackLockRatio = 0.82;
+          lockRatio = 0.84;
         }
 
         samples.push({
-          x: targetX * fallbackLockRatio + fallback.x * (1 - fallbackLockRatio),
-          y: targetY * fallbackLockRatio + fallback.y * (1 - fallbackLockRatio),
+          x: targetX * lockRatio + fallback.x * (1 - lockRatio),
+          y: targetY * lockRatio + fallback.y * (1 - lockRatio),
           z: fallback.z,
         });
       } else {
@@ -351,7 +341,6 @@ function computeTapeSamplePoints(
           const ddx = candidate.point.x - prevSample.x;
           const ddy = candidate.point.y - prevSample.y;
           const stepDist = Math.sqrt(ddx * ddx + ddy * ddy);
-
           continuityPenalty += Math.abs(stepDist - step) * 0.8;
         }
 
@@ -370,7 +359,6 @@ function computeTapeSamplePoints(
       }
     }
 
-    // 水平ほど張る、垂直ほど実点寄り、斜めは横ブレしない程度に直線寄り
     let lockRatio = 0.55;
 
     if (guideMode === "horizontal") {
@@ -679,7 +667,7 @@ const [guideAngleDeg, setGuideAngleDeg] = useState<number | null>(null);
 
   const [divisionCount, setDivisionCount] = useState(8);
 const [searchRadius, setSearchRadius] = useState(0.01); // 1cm
-const [sliceWidth, setSliceWidth] = useState(0.02);     // 2cm
+const sliceWidth = 0.01; // 1cm固定
   const [isPinned, setIsPinned] = useState(false);
 
   const [leftWidth, setLeftWidth] = useState(360);
@@ -1120,9 +1108,7 @@ setIsPinned(false);
                 <h1 className="text-3xl font-semibold tracking-tight text-cyan-50">
                   LAS Viewer
                 </h1>
-                <p className="mt-2 text-sm text-slate-300">
-                  点群を背景空間として表示し、法面計測の土台にする。
-                </p>
+               
               </div>
 
               <button
@@ -1275,27 +1261,28 @@ setHoverSnapPoint(null);
     />
   </div>
 
-  <div className="mt-3">
-    <label className="block text-xs text-slate-300">
-      近傍探索半径: {(searchRadius * 100).toFixed(0)} cm
-    </label>
-    <input
-      type="range"
-      min={0.005}
-      max={0.05}
-      step={0.0025}
-      value={searchRadius}
-      onChange={(e) =>
-        setSearchRadius(clamp(Number(e.target.value), 0.005, 0.05))
-      }
-      className="mt-1 w-full"
-    />
-  </div>
+ <div className="mt-3">
+  <label className="block text-xs text-slate-300">
+    近傍探索半径: {(searchRadius * 100).toFixed(0)} cm
+  </label>
+  <input
+    type="range"
+    min={0}
+    max={0.03}
+    step={0.001}
+    value={searchRadius}
+    onChange={(e) =>
+      setSearchRadius(clamp(Number(e.target.value), 0, 0.03))
+    }
+    className="mt-1 w-full"
+  />
+</div>
 
-  <div className="mt-3">
-    <label className="block text-xs text-slate-300">
-      断面スライス幅: {(sliceWidth * 100).toFixed(0)} cm
-    </label>
+ <div className="mt-3">
+  <label className="block text-xs text-slate-300">
+    断面スライス幅: 1 cm（固定）
+  </label>
+
     <input
       type="range"
       min={0.005}
@@ -1480,9 +1467,7 @@ setHoverSnapPoint(null);
                   <h2 className="mt-2 text-xl font-semibold text-cyan-50">
                     展開図 / 図面
                   </h2>
-                  <p className="mt-2 text-sm text-slate-300">
-                    右下に断面ビューを常時表示。将来ここに2D展開図やDXF出力を置く。
-                  </p>
+               
                 </div>
 
                 <button
