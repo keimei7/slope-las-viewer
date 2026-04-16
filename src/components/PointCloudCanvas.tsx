@@ -1,115 +1,33 @@
 "use client";
 
 import { Canvas } from "@react-three/fiber";
-import { TOUCH } from "three";
 import { OrbitControls, Line, Html } from "@react-three/drei";
 import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
+import { TOUCH } from "three";
 import type { PickedPoint, Point3 } from "./LasViewer";
 
 type ViewMode = "top" | "angled";
 
 type SavedLine = {
   id: string;
-  name: string; // ←追加（ABとか）
+  name: string;
   start: PickedPoint;
   end: PickedPoint;
   tapePoints: PickedPoint[];
   straightLength: number;
   surfaceLength: number;
 };
-function getTriangleVerticesFromLines(lines: SavedLine[]) {
-  if (lines.length !== 3) return null;
 
-  const pts: PickedPoint[] = [];
+type SavedTriangle = {
+  id: string;
+  name: string;
+  lineIds: [string, string, string];
+  lineNames: [string, string, string];
+  edgeLengths: [number, number, number];
+  area: number;
+};
 
-  const endpoints = lines.flatMap((l) => [l.start, l.end]);
-
-  for (let i = 0; i < endpoints.length; i++) {
-    for (let j = i + 1; j < endpoints.length; j++) {
-      const a = endpoints[i];
-      const b = endpoints[j];
-
-      const dx = a.x - b.x;
-      const dy = a.y - b.y;
-      const dz = a.z - b.z;
-
-      const d = Math.sqrt(dx * dx + dy * dy + dz * dz);
-
-      if (d < 0.01) {
-        pts.push(a);
-      }
-    }
-  }
-
-  // 重複除去
-  const unique: PickedPoint[] = [];
-
-  for (const p of pts) {
-    if (
-      !unique.some(
-        (u) =>
-          Math.abs(u.x - p.x) < 0.01 &&
-          Math.abs(u.y - p.y) < 0.01 &&
-          Math.abs(u.z - p.z) < 0.01,
-      )
-    ) {
-      unique.push(p);
-    }
-  }
-
-  if (unique.length !== 3) return null;
-
-  return unique;
-}
-function TriangleMesh({
-  triangle,
-  savedLines,
-  bounds,
-  zScale,
-}: {
-  triangle: any;
-  savedLines: SavedLine[];
-  bounds: ReturnType<typeof computeBounds>;
-  zScale: number;
-}) {
-  const lines = triangle.lineIds
-    .map((id: string) => savedLines.find((l) => l.id === id))
-    .filter(Boolean) as SavedLine[];
-
-  const vertices = getTriangleVerticesFromLines(lines);
-  if (!vertices) return null;
-
-  const positions = new Float32Array([
-    vertices[0].x - bounds.cx,
-    vertices[0].y - bounds.cy,
-    (vertices[0].z - bounds.cz) * zScale,
-
-    vertices[1].x - bounds.cx,
-    vertices[1].y - bounds.cy,
-    (vertices[1].z - bounds.cz) * zScale,
-
-    vertices[2].x - bounds.cx,
-    vertices[2].y - bounds.cy,
-    (vertices[2].z - bounds.cz) * zScale,
-  ]);
-
-  const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
-  geometry.setIndex([0, 1, 2]);
-  geometry.computeVertexNormals();
-
-  return (
-    <mesh geometry={geometry}>
-      <meshBasicMaterial
-  color="#22d3ee"
-  opacity={0.2}
-  transparent
-  side={THREE.DoubleSide}
-/>
-    </mesh>
-  );
-}
 function computeBounds(points: Point3[]) {
   if (points.length === 0) {
     return {
@@ -158,6 +76,47 @@ function computeBounds(points: Point3[]) {
     sy: maxY - minY,
     sz: maxZ - minZ,
   };
+}
+
+function getTriangleVerticesFromLines(lines: SavedLine[]) {
+  if (lines.length !== 3) return null;
+
+  const pts: PickedPoint[] = [];
+  const endpoints = lines.flatMap((l) => [l.start, l.end]);
+
+  for (let i = 0; i < endpoints.length; i++) {
+    for (let j = i + 1; j < endpoints.length; j++) {
+      const a = endpoints[i];
+      const b = endpoints[j];
+
+      const dx = a.x - b.x;
+      const dy = a.y - b.y;
+      const dz = a.z - b.z;
+      const d = Math.sqrt(dx * dx + dy * dy + dz * dz);
+
+      if (d < 0.01) {
+        pts.push(a);
+      }
+    }
+  }
+
+  const unique: PickedPoint[] = [];
+
+  for (const p of pts) {
+    if (
+      !unique.some(
+        (u) =>
+          Math.abs(u.x - p.x) < 0.01 &&
+          Math.abs(u.y - p.y) < 0.01 &&
+          Math.abs(u.z - p.z) < 0.01,
+      )
+    ) {
+      unique.push(p);
+    }
+  }
+
+  if (unique.length !== 3) return null;
+  return unique;
 }
 
 function pointToSegmentMetrics2D(
@@ -216,7 +175,6 @@ function PointCloud({
   focusWidth: number;
   sliceWidth: number;
 }) {
-  
   const bounds = useMemo(() => computeBounds(points), [points]);
 
   const geometry = useMemo(() => {
@@ -277,46 +235,46 @@ function PointCloud({
   }, [points, bounds, zScale, startPoint, endPoint, focusWidth, sliceWidth]);
 
   return (
-   <points
-  geometry={geometry}
-  onPointerMove={(event) => {
-    event.stopPropagation();
+    <points
+      geometry={geometry}
+      onPointerMove={(event) => {
+        event.stopPropagation();
 
-    if (typeof event.index !== "number") {
-      onHover(null);
-      return;
-    }
+        if (typeof event.index !== "number") {
+          onHover(null);
+          return;
+        }
 
-    const picked = points[event.index];
-    if (!picked) {
-      onHover(null);
-      return;
-    }
+        const picked = points[event.index];
+        if (!picked) {
+          onHover(null);
+          return;
+        }
 
-    onHover({
-      x: picked.x,
-      y: picked.y,
-      z: picked.z,
-    });
-  }}
-  onPointerOut={() => {
-    onHover(null);
-  }}
-  onClick={(event) => {
-    event.stopPropagation();
+        onHover({
+          x: picked.x,
+          y: picked.y,
+          z: picked.z,
+        });
+      }}
+      onPointerOut={() => {
+        onHover(null);
+      }}
+      onClick={(event) => {
+        event.stopPropagation();
 
-    if (typeof event.index !== "number") return;
+        if (typeof event.index !== "number") return;
 
-    const picked = points[event.index];
-    if (!picked) return;
+        const picked = points[event.index];
+        if (!picked) return;
 
-    onPick({
-      x: picked.x,
-      y: picked.y,
-      z: picked.z,
-    });
-  }}
->
+        onPick({
+          x: picked.x,
+          y: picked.y,
+          z: picked.z,
+        });
+      }}
+    >
       <pointsMaterial
         size={pointSize}
         sizeAttenuation={false}
@@ -358,11 +316,13 @@ function PickLine({
   endPoint,
   bounds,
   zScale,
+  lineWidthScale,
 }: {
   startPoint: PickedPoint;
   endPoint: PickedPoint;
   bounds: ReturnType<typeof computeBounds>;
   zScale: number;
+  lineWidthScale: number;
 }) {
   return (
     <Line
@@ -379,7 +339,7 @@ function PickLine({
         ],
       ]}
       color="#38bdf8"
-      lineWidth={0.9}
+      lineWidth={0.9 * lineWidthScale}
     />
   );
 }
@@ -388,10 +348,12 @@ function TapeLine({
   tapePoints,
   bounds,
   zScale,
+  lineWidthScale,
 }: {
   tapePoints: PickedPoint[];
   bounds: ReturnType<typeof computeBounds>;
   zScale: number;
+  lineWidthScale: number;
 }) {
   if (tapePoints.length < 2) return null;
 
@@ -403,7 +365,7 @@ function TapeLine({
         (p.z - bounds.cz) * zScale,
       ])}
       color="#f59e0b"
-      lineWidth={1.2}
+      lineWidth={1.2 * lineWidthScale}
     />
   );
 }
@@ -428,13 +390,14 @@ function TapeMarkers({
             (p.z - bounds.cz) * zScale,
           ]}
         >
-        <sphereGeometry args={[0.03, 8, 8]} />
+          <sphereGeometry args={[0.03, 8, 8]} />
           <meshBasicMaterial color="#f59e0b" />
         </mesh>
       ))}
     </>
   );
 }
+
 function HoverSavedLineDetails({
   savedLines,
   hoverLineId,
@@ -491,6 +454,7 @@ function HoverSavedLineDetails({
     </>
   );
 }
+
 function HoverTriangleDetails({
   savedTriangles,
   savedLines,
@@ -498,14 +462,7 @@ function HoverTriangleDetails({
   bounds,
   zScale,
 }: {
-  savedTriangles: {
-    id: string;
-    name: string;
-    lineIds: [string, string, string];
-    lineNames: [string, string, string];
-    edgeLengths: [number, number, number];
-    area: number;
-  }[];
+  savedTriangles: SavedTriangle[];
   savedLines: SavedLine[];
   hoverTriangleId: string | null;
   bounds: ReturnType<typeof computeBounds>;
@@ -601,6 +558,7 @@ function SavedLinesLayer({
   bounds,
   zScale,
   selectedLineIds,
+  lineWidthScale,
 }: {
   savedLines: SavedLine[];
   hoverLineId: string | null;
@@ -608,40 +566,48 @@ function SavedLinesLayer({
   bounds: ReturnType<typeof computeBounds>;
   zScale: number;
   selectedLineIds: string[];
+  lineWidthScale: number;
 }) {
   return (
     <>
       {savedLines.map((line) => (
         <group key={line.id}>
-        <Line
-  points={line.tapePoints.map((p) => [
-    p.x - bounds.cx,
-    p.y - bounds.cy,
-    (p.z - bounds.cz) * zScale,
-  ])}
- color={
-  selectedLineIds.includes(line.id)
-    ? "#ef4444"
-    : hoverLineId === line.id
-      ? "#f59e0b"
-      : "#60a5fa"
-}
-lineWidth={selectedLineIds.includes(line.id) ? 3.2 : hoverLineId === line.id ? 2.6 : 2.0}
-  onPointerOver={(e) => {
-    e.stopPropagation();
-    onHoverSavedLine(line.id);
-  }}
-  onPointerOut={(e) => {
-    e.stopPropagation();
-    onHoverSavedLine(null);
-  }}
-/>
+          <Line
+            points={line.tapePoints.map((p) => [
+              p.x - bounds.cx,
+              p.y - bounds.cy,
+              (p.z - bounds.cz) * zScale,
+            ])}
+            color={
+              selectedLineIds.includes(line.id)
+                ? "#ef4444"
+                : hoverLineId === line.id
+                  ? "#f59e0b"
+                  : "#60a5fa"
+            }
+            lineWidth={
+              (selectedLineIds.includes(line.id)
+                ? 3.2
+                : hoverLineId === line.id
+                  ? 2.6
+                  : 2.0) * lineWidthScale
+            }
+            onPointerOver={(e) => {
+              e.stopPropagation();
+              onHoverSavedLine(line.id);
+            }}
+            onPointerOut={(e) => {
+              e.stopPropagation();
+              onHoverSavedLine(null);
+            }}
+          />
           <SavedLineLabel line={line} bounds={bounds} zScale={zScale} />
         </group>
       ))}
     </>
   );
 }
+
 function HoverSnapMarker({
   point,
   bounds,
@@ -666,6 +632,7 @@ function HoverSnapMarker({
     </mesh>
   );
 }
+
 function GuidePreviewLine({
   startPoint,
   hoverPoint,
@@ -673,6 +640,7 @@ function GuidePreviewLine({
   guideAngleDeg,
   bounds,
   zScale,
+  lineWidthScale,
 }: {
   startPoint: PickedPoint | null;
   hoverPoint: PickedPoint | null;
@@ -680,6 +648,7 @@ function GuidePreviewLine({
   guideAngleDeg: number | null;
   bounds: ReturnType<typeof computeBounds>;
   zScale: number;
+  lineWidthScale: number;
 }) {
   if (!startPoint || !hoverPoint) return null;
 
@@ -701,25 +670,25 @@ function GuidePreviewLine({
   }
 
   return (
-   <Line
-  points={[
-    [
-      startPoint.x - bounds.cx,
-      startPoint.y - bounds.cy,
-      (startPoint.z - bounds.cz) * zScale,
-    ],
-    [
-      previewX - bounds.cx,
-      previewY - bounds.cy,
-      (hoverPoint.z - bounds.cz) * zScale,
-    ],
-  ]}
-  color="#fb7185"
-  lineWidth={0.8}
-  dashed
-  dashSize={0.08}
-  gapSize={0.05}
-/>
+    <Line
+      points={[
+        [
+          startPoint.x - bounds.cx,
+          startPoint.y - bounds.cy,
+          (startPoint.z - bounds.cz) * zScale,
+        ],
+        [
+          previewX - bounds.cx,
+          previewY - bounds.cy,
+          (hoverPoint.z - bounds.cz) * zScale,
+        ],
+      ]}
+      color="#fb7185"
+      lineWidth={0.8 * lineWidthScale}
+      dashed
+      dashSize={0.08}
+      gapSize={0.05}
+    />
   );
 }
 
@@ -729,12 +698,14 @@ function SliceGuide({
   bounds,
   zScale,
   sliceWidth,
+  lineWidthScale,
 }: {
   startPoint: PickedPoint;
   endPoint: PickedPoint;
   bounds: ReturnType<typeof computeBounds>;
   zScale: number;
   sliceWidth: number;
+  lineWidthScale: number;
 }) {
   const guidePoints = useMemo(() => {
     const dx = endPoint.x - startPoint.x;
@@ -780,9 +751,68 @@ function SliceGuide({
 
   return (
     <>
-      <Line points={guidePoints.left} color="#f59e0b" lineWidth={0.7} dashed />
-      <Line points={guidePoints.right} color="#f59e0b" lineWidth={0.7} dashed />
+      <Line
+        points={guidePoints.left}
+        color="#f59e0b"
+        lineWidth={0.7 * lineWidthScale}
+        dashed
+      />
+      <Line
+        points={guidePoints.right}
+        color="#f59e0b"
+        lineWidth={0.7 * lineWidthScale}
+        dashed
+      />
     </>
+  );
+}
+
+function TriangleMesh({
+  triangle,
+  savedLines,
+  bounds,
+  zScale,
+}: {
+  triangle: SavedTriangle;
+  savedLines: SavedLine[];
+  bounds: ReturnType<typeof computeBounds>;
+  zScale: number;
+}) {
+  const lines = triangle.lineIds
+    .map((id) => savedLines.find((l) => l.id === id))
+    .filter(Boolean) as SavedLine[];
+
+  const vertices = getTriangleVerticesFromLines(lines);
+  if (!vertices) return null;
+
+  const positions = new Float32Array([
+    vertices[0].x - bounds.cx,
+    vertices[0].y - bounds.cy,
+    (vertices[0].z - bounds.cz) * zScale,
+
+    vertices[1].x - bounds.cx,
+    vertices[1].y - bounds.cy,
+    (vertices[1].z - bounds.cz) * zScale,
+
+    vertices[2].x - bounds.cx,
+    vertices[2].y - bounds.cy,
+    (vertices[2].z - bounds.cz) * zScale,
+  ]);
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+  geometry.setIndex([0, 1, 2]);
+  geometry.computeVertexNormals();
+
+  return (
+    <mesh geometry={geometry}>
+      <meshBasicMaterial
+        color="#22d3ee"
+        opacity={0.2}
+        transparent
+        side={THREE.DoubleSide}
+      />
+    </mesh>
   );
 }
 
@@ -823,30 +853,29 @@ function CameraRig({
     controls.update();
   }, [points, bounds, zScale, viewMode, viewResetKey]);
 
-  
- return (
-  <OrbitControls
-  ref={controlsRef}
-  enableDamping={false}
-  rotateSpeed={0.8}
-  zoomSpeed={1.15}
-  panSpeed={0.8}
-  screenSpacePanning={false}
-  minPolarAngle={0}
-  maxPolarAngle={Math.PI}
-
-  touches={{
-  ONE: TOUCH.ROTATE,
-  TWO: TOUCH.DOLLY_PAN,
-}}
-  mouseButtons={{
-    LEFT: THREE.MOUSE.ROTATE,
-    MIDDLE: THREE.MOUSE.DOLLY,
-    RIGHT: THREE.MOUSE.PAN,
-  }}
-/>
-);
+  return (
+    <OrbitControls
+      ref={controlsRef}
+      enableDamping={false}
+      rotateSpeed={0.8}
+      zoomSpeed={1.15}
+      panSpeed={0.8}
+      screenSpacePanning={false}
+      minPolarAngle={0}
+      maxPolarAngle={Math.PI}
+      touches={{
+        ONE: TOUCH.ROTATE,
+        TWO: TOUCH.DOLLY_PAN,
+      }}
+      mouseButtons={{
+        LEFT: THREE.MOUSE.ROTATE,
+        MIDDLE: THREE.MOUSE.DOLLY,
+        RIGHT: THREE.MOUSE.PAN,
+      }}
+    />
+  );
 }
+
 export default function PointCloudCanvas({
   points,
   startPoint,
@@ -862,6 +891,8 @@ export default function PointCloudCanvas({
   hoverLineId,
   hoverTriangleId,
   selectedLineIds,
+  lineWidthScale,
+  hitThreshold,
   zScale,
   pointSize,
   viewMode,
@@ -872,19 +903,21 @@ export default function PointCloudCanvas({
   savedLines,
   savedTriangles,
 }: {
-selectedLineIds: string[];
+  selectedLineIds: string[];
+  lineWidthScale: number;
+  hitThreshold: number;
   points: Point3[];
   startPoint: PickedPoint | null;
   endPoint: PickedPoint | null;
   onPickPoint: (p: PickedPoint) => void;
   onHoverPoint: (p: PickedPoint | null) => void;
   hoverSnapPoint: PickedPoint | null;
+  hoverPoint: PickedPoint | null;
+  guideMode: "horizontal" | "vertical" | "angled" | "free";
+  guideAngleDeg: number | null;
   zScale: number;
   hoverLineId: string | null;
-  hoverPoint: PickedPoint | null;
-guideMode: "horizontal" | "vertical" | "angled" | "free";
-guideAngleDeg: number | null;
-hoverTriangleId: string | null;
+  hoverTriangleId: string | null;
   pointSize: number;
   viewMode: ViewMode;
   viewResetKey: number;
@@ -892,18 +925,10 @@ hoverTriangleId: string | null;
   sliceWidth: number;
   tapePoints: PickedPoint[];
   savedLines: SavedLine[];
-    onHoverSavedLine: (lineId: string | null) => void;
+  onHoverSavedLine: (lineId: string | null) => void;
   onHoverTriangle: (triangleId: string | null) => void;
-    savedTriangles: {
-    id: string;
-    name: string;
-    lineIds: [string, string, string];
-    lineNames: [string, string, string];
-    edgeLengths: [number, number, number];
-    area: number;
-  }[];
+  savedTriangles: SavedTriangle[];
 }) {
-
   const bounds = useMemo(() => computeBounds(points), [points]);
   const gridSize = useMemo(
     () => Math.max(bounds.sx, bounds.sy, 200) * 2.5,
@@ -915,10 +940,10 @@ hoverTriangleId: string | null;
       <Canvas
         className="h-full w-full"
         camera={{ position: [0, 0, 200], fov: 40, near: 0.1, far: 200000 }}
-      onCreated={({ gl, raycaster }) => {
-  gl.setClearColor("#020617");
-  raycaster.params.Points = { threshold: 0.05 };
-}}
+        onCreated={({ gl, raycaster }) => {
+          gl.setClearColor("#020617");
+          raycaster.params.Points = { threshold: hitThreshold };
+        }}
       >
         <ambientLight intensity={0.65} />
         <directionalLight position={[200, -100, 300]} intensity={0.55} />
@@ -929,16 +954,16 @@ hoverTriangleId: string | null;
         />
 
         <PointCloud
-  points={points}
-  zScale={zScale}
-  pointSize={pointSize}
-  onPick={onPickPoint}
-  onHover={onHoverPoint}
-  startPoint={startPoint}
-  endPoint={endPoint}
-  focusWidth={focusWidth}
-  sliceWidth={sliceWidth}
-/>
+          points={points}
+          zScale={zScale}
+          pointSize={pointSize}
+          onPick={onPickPoint}
+          onHover={onHoverPoint}
+          startPoint={startPoint}
+          endPoint={endPoint}
+          focusWidth={focusWidth}
+          sliceWidth={sliceWidth}
+        />
 
         {startPoint ? (
           <Marker
@@ -958,60 +983,84 @@ hoverTriangleId: string | null;
           />
         ) : null}
 
-       {startPoint && !endPoint && hoverSnapPoint ? (
-  <SliceGuide
-    startPoint={startPoint}
-    endPoint={hoverSnapPoint}
-    bounds={bounds}
-    zScale={zScale}
-    sliceWidth={sliceWidth}
-  />
-) : null}
-<HoverSnapMarker point={hoverSnapPoint} bounds={bounds} zScale={zScale} />
-{startPoint && !endPoint && hoverPoint ? (
-  <GuidePreviewLine
-    startPoint={startPoint}
-    hoverPoint={hoverPoint}
-    guideMode={guideMode}
-    guideAngleDeg={guideAngleDeg}
-    bounds={bounds}
-    zScale={zScale}
-  />
-) : null}
-<SavedLinesLayer
-  savedLines={savedLines}
-  hoverLineId={hoverLineId}
-  onHoverSavedLine={onHoverSavedLine}
-  bounds={bounds}
-  zScale={zScale}
-  selectedLineIds={selectedLineIds}
-/>
+        {startPoint && endPoint ? (
+          <PickLine
+            startPoint={startPoint}
+            endPoint={endPoint}
+            bounds={bounds}
+            zScale={zScale}
+            lineWidthScale={lineWidthScale}
+          />
+        ) : null}
 
-        <TapeLine tapePoints={tapePoints} bounds={bounds} zScale={zScale} />
+        {startPoint && !endPoint && hoverSnapPoint ? (
+          <SliceGuide
+            startPoint={startPoint}
+            endPoint={hoverSnapPoint}
+            bounds={bounds}
+            zScale={zScale}
+            sliceWidth={sliceWidth}
+            lineWidthScale={lineWidthScale}
+          />
+        ) : null}
+
+        <HoverSnapMarker point={hoverSnapPoint} bounds={bounds} zScale={zScale} />
+
+        {startPoint && !endPoint && hoverPoint ? (
+          <GuidePreviewLine
+            startPoint={startPoint}
+            hoverPoint={hoverPoint}
+            guideMode={guideMode}
+            guideAngleDeg={guideAngleDeg}
+            bounds={bounds}
+            zScale={zScale}
+            lineWidthScale={lineWidthScale}
+          />
+        ) : null}
+
+        <SavedLinesLayer
+          savedLines={savedLines}
+          hoverLineId={hoverLineId}
+          onHoverSavedLine={onHoverSavedLine}
+          bounds={bounds}
+          zScale={zScale}
+          selectedLineIds={selectedLineIds}
+          lineWidthScale={lineWidthScale}
+        />
+
+        <TapeLine
+          tapePoints={tapePoints}
+          bounds={bounds}
+          zScale={zScale}
+          lineWidthScale={lineWidthScale}
+        />
         <TapeMarkers tapePoints={tapePoints} bounds={bounds} zScale={zScale} />
-<HoverSavedLineDetails
-  savedLines={savedLines}
-  hoverLineId={hoverLineId}
-  bounds={bounds}
-  zScale={zScale}
-/>
 
-<HoverTriangleDetails
-  savedTriangles={savedTriangles}
-  savedLines={savedLines}
-  hoverTriangleId={hoverTriangleId}
-  bounds={bounds}
-  zScale={zScale}
-/>
-{savedTriangles.map((triangle) => (
-  <TriangleMesh
-    key={triangle.id}
-    triangle={triangle}
-    savedLines={savedLines}
-    bounds={bounds}
-    zScale={zScale}
-  />
-))}
+        <HoverSavedLineDetails
+          savedLines={savedLines}
+          hoverLineId={hoverLineId}
+          bounds={bounds}
+          zScale={zScale}
+        />
+
+        <HoverTriangleDetails
+          savedTriangles={savedTriangles}
+          savedLines={savedLines}
+          hoverTriangleId={hoverTriangleId}
+          bounds={bounds}
+          zScale={zScale}
+        />
+
+        {savedTriangles.map((triangle) => (
+          <TriangleMesh
+            key={triangle.id}
+            triangle={triangle}
+            savedLines={savedLines}
+            bounds={bounds}
+            zScale={zScale}
+          />
+        ))}
+
         <CameraRig
           points={points}
           zScale={zScale}
