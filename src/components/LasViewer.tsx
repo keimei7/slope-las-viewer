@@ -71,6 +71,7 @@ function distance3D(a: PickedPoint, b: PickedPoint) {
   return Math.sqrt(dx * dx + dy * dy + dz * dz);
 }
 
+
 function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));
 }
@@ -78,6 +79,65 @@ function computeHeronArea(a: number, b: number, c: number) {
   const s = (a + b + c) / 2;
   const value = s * (s - a) * (s - b) * (s - c);
   return value > 0 ? Math.sqrt(value) : 0;
+}
+// ① 三角形3点取得（既にあるならスキップOK）
+function getTriangleVerticesFromLines(lines: SavedLine[]) {
+  if (lines.length !== 3) return null;
+
+  const pts: PickedPoint[] = [];
+  const endpoints = lines.flatMap((l) => [l.start, l.end]);
+
+  for (let i = 0; i < endpoints.length; i++) {
+    for (let j = i + 1; j < endpoints.length; j++) {
+      const a = endpoints[i];
+      const b = endpoints[j];
+
+      const dx = a.x - b.x;
+      const dy = a.y - b.y;
+      const dz = a.z - b.z;
+      const d = Math.sqrt(dx * dx + dy * dy + dz * dz);
+
+      if (d < 0.01) pts.push(a);
+    }
+  }
+
+  const unique: PickedPoint[] = [];
+  for (const p of pts) {
+    if (!unique.some(
+      (u) =>
+        Math.abs(u.x - p.x) < 0.01 &&
+        Math.abs(u.y - p.y) < 0.01 &&
+        Math.abs(u.z - p.z) < 0.01
+    )) {
+      unique.push(p);
+    }
+  }
+
+  if (unique.length !== 3) return null;
+  return unique;
+}
+
+// ② 2D展開
+function projectTriangleTo2D(a: Point3, b: Point3, c: Point3) {
+  const dist = (p1: Point3, p2: Point3) => {
+    const dx = p2.x - p1.x;
+    const dy = p2.y - p1.y;
+    const dz = p2.z - p1.z;
+    return Math.sqrt(dx * dx + dy * dy + dz * dz);
+  };
+
+  const AB = dist(a, b);
+  const AC = dist(a, c);
+  const BC = dist(b, c);
+
+  const cosC = (AC * AC + AB * AB - BC * BC) / (2 * AC * AB);
+  const sinC = Math.sqrt(Math.max(0, 1 - cosC * cosC));
+
+  return [
+    { x: 0, y: 0 },
+    { x: AB, y: 0 },
+    { x: cosC * AC, y: sinC * AC },
+  ];
 }
 
 function computeTapeSamplePoints(
@@ -232,7 +292,43 @@ samples.push({
 
   return samples;
 }
+function Triangle2DView({
+  triangle,
+  savedLines,
+}: {
+  triangle: SavedTriangle;
+  savedLines: SavedLine[];
+}) {
+  const lines = triangle.lineIds
+    .map((id) => savedLines.find((l) => l.id === id))
+    .filter(Boolean) as SavedLine[];
 
+  const vertices = getTriangleVerticesFromLines(lines);
+  if (!vertices) return null;
+
+  const [A, B, C] = projectTriangleTo2D(
+    vertices[0],
+    vertices[1],
+    vertices[2],
+  );
+
+  const scale = 40;
+
+  return (
+    <svg width="220" height="220">
+      <polygon
+        points={`
+          ${A.x * scale},${200 - A.y * scale}
+          ${B.x * scale},${200 - B.y * scale}
+          ${C.x * scale},${200 - C.y * scale}
+        `}
+        fill="rgba(34,211,238,0.2)"
+        stroke="#22d3ee"
+        strokeWidth="2"
+      />
+    </svg>
+  );
+}
 export default function LasViewer() {
   const [points, setPoints] = useState<Point3[]>([]);
   const [fileName, setFileName] = useState("");
@@ -986,57 +1082,64 @@ setIsPinned(false);
                 図面プレビュー領域
               </div>
 <div className="mt-4 rounded-xl border border-white/10 bg-black/15 p-3">
-  <div className="text-xs font-semibold uppercase tracking-wide text-cyan-100/80">
-    三角形一覧
-  </div>
-
-  <div className="mt-3 space-y-2">
-    {savedTriangles.length === 0 ? (
-      <div className="text-sm text-slate-400">
-        三角形はまだ作成されていません。
-      </div>
-    ) : (
-      savedTriangles.map((triangle) => (
-        <div
-  key={triangle.id}
-  onMouseEnter={() => setHoverTriangleId(triangle.id)}
-  onMouseLeave={() => setHoverTriangleId(null)}
-  className="rounded-lg border border-white/10 bg-white/5 p-2"
->
-          <div className="flex items-center justify-between gap-3">
-            <div className="text-sm font-medium text-cyan-50">
-              {triangle.name}
-            </div>
-            <button
-              type="button"
-              onClick={() =>
-                setSavedTriangles((prev) =>
-                  prev.filter((item) => item.id !== triangle.id),
-                )
-              }
-              className="rounded border border-white/10 px-2 py-1 text-xs text-slate-300 hover:bg-white/10"
-            >
-              削除
-            </button>
+<div className="mt-3 space-y-2">
+  {savedTriangles.length === 0 ? (
+    <div className="text-sm text-slate-400">
+      三角形はまだ作成されていません。
+    </div>
+  ) : (
+    savedTriangles.map((triangle) => (
+      <div
+        key={triangle.id}
+        onMouseEnter={() => setHoverTriangleId(triangle.id)}
+        onMouseLeave={() => setHoverTriangleId(null)}
+        className="rounded-lg border border-white/10 bg-white/5 p-2"
+      >
+        {/* ヘッダー */}
+        <div className="flex items-center justify-between gap-3">
+          <div className="text-sm font-medium text-cyan-50">
+            {triangle.name}
           </div>
-
-          <div className="mt-2 text-xs text-slate-400">
-            {triangle.lineNames[0]}: {triangle.edgeLengths[0].toFixed(3)} m
-          </div>
-          <div className="mt-1 text-xs text-slate-400">
-            {triangle.lineNames[1]}: {triangle.edgeLengths[1].toFixed(3)} m
-          </div>
-          <div className="mt-1 text-xs text-slate-400">
-            {triangle.lineNames[2]}: {triangle.edgeLengths[2].toFixed(3)} m
-          </div>
-
-          <div className="mt-2 text-sm font-medium text-emerald-300">
-            ヘロン面積: {triangle.area.toFixed(3)} ㎡
-          </div>
+          <button
+            type="button"
+            onClick={() =>
+              setSavedTriangles((prev) =>
+                prev.filter((item) => item.id !== triangle.id),
+              )
+            }
+            className="rounded border border-white/10 px-2 py-1 text-xs text-slate-300 hover:bg-white/10"
+          >
+            削除
+          </button>
         </div>
-      ))
-    )}
-  </div>
+
+        {/* 辺情報 */}
+        <div className="mt-2 text-xs text-slate-400">
+          {triangle.lineNames[0]}: {triangle.edgeLengths[0].toFixed(3)} m
+        </div>
+        <div className="mt-1 text-xs text-slate-400">
+          {triangle.lineNames[1]}: {triangle.edgeLengths[1].toFixed(3)} m
+        </div>
+        <div className="mt-1 text-xs text-slate-400">
+          {triangle.lineNames[2]}: {triangle.edgeLengths[2].toFixed(3)} m
+        </div>
+
+        {/* 面積 */}
+        <div className="mt-2 text-sm font-medium text-emerald-300">
+          ヘロン面積: {triangle.area.toFixed(3)} ㎡
+        </div>
+
+        {/* 👇ここ追加：2D展開 */}
+        <div className="mt-3 flex justify-center">
+          <Triangle2DView
+            triangle={triangle}
+            savedLines={savedLines}
+          />
+        </div>
+      </div>
+    ))
+  )}
+</div>
 </div>
               <div className="mt-4 rounded-xl border border-white/10 bg-black/15 p-3">
                 <div className="text-xs font-semibold uppercase tracking-wide text-cyan-100/80">
