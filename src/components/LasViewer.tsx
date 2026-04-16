@@ -507,6 +507,31 @@ const [savedTriangles, setSavedTriangles] = useState<SavedTriangle[]>([]);
 const [hoverLineId, setHoverLineId] = useState<string | null>(null);
 const [hoverTriangleId, setHoverTriangleId] = useState<string | null>(null);
 
+const isSamePoint = (a: PickedPoint, b: PickedPoint, eps = 0.001) => {
+  return (
+    Math.abs(a.x - b.x) < eps &&
+    Math.abs(a.y - b.y) < eps &&
+    Math.abs(a.z - b.z) < eps
+  );
+};
+
+const isDuplicateLine = useMemo(() => {
+  if (!startPoint || !endPoint) return false;
+
+  return savedLines.some((line) => {
+    // 同じ向き
+    const sameForward =
+      isSamePoint(line.start, startPoint) &&
+      isSamePoint(line.end, endPoint);
+
+    // 逆向き（重要）
+    const sameReverse =
+      isSamePoint(line.start, endPoint) &&
+      isSamePoint(line.end, startPoint);
+
+    return sameForward || sameReverse;
+  });
+}, [startPoint, endPoint, savedLines]);
 const activeTriangle = useMemo(() => {
   if (hoverTriangleId) {
     return savedTriangles.find((t) => t.id === hoverTriangleId) ?? null;
@@ -930,7 +955,7 @@ setIsPinned(false);
   <div className="mt-3 flex flex-wrap gap-2">
     <button
       type="button"
-      disabled={!startPoint || !endPoint}
+     disabled={!startPoint || !endPoint || isDuplicateLine}
       onClick={() => {
         if (!startPoint || !endPoint) return;
 
@@ -950,7 +975,13 @@ setIsPinned(false);
           },
         ]);
       }}
-      className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
+     className={`rounded-lg border border-white/10 px-3 py-1.5 text-sm
+  ${
+    !startPoint || !endPoint || isDuplicateLine
+      ? "bg-white/5 opacity-40 cursor-not-allowed"
+      : "bg-white/5 hover:bg-white/10"
+  }
+`}
     >
       この線を保存
     </button>
@@ -964,6 +995,11 @@ setIsPinned(false);
       測点リセット
     </button>
   </div>
+{isDuplicateLine ? (
+  <div className="mt-2 text-xs text-amber-400">
+    この線はすでに保存されています
+  </div>
+) : null}
 
   <button
     type="button"
@@ -1364,15 +1400,27 @@ setIsPinned(false);
 
     <button
       type="button"
-      onClick={() => {
-  setSavedLines((prev) => prev.filter((item) => item.id !== line.id));
+     onClick={() => {
+  if (!startPoint || !endPoint || isDuplicateLine) return;
 
-  setSelectedLineIds((prev) => prev.filter((id) => id !== line.id));
+  const id = crypto.randomUUID();
+  const name = `L${savedLines.length + 1}`;
 
-  // 🔥 三角形も削除
-  setSavedTriangles((prev) =>
-    prev.filter((tri) => !tri.lineIds.includes(line.id))
-  );
+  setSavedLines((prev) => [
+    ...prev,
+    {
+      id,
+      name,
+      start: startPoint,
+      end: endPoint,
+      tapePoints,
+      straightLength: pickedDistance ?? 0,
+      surfaceLength: tapeDistance ?? 0,
+    },
+  ]);
+
+  setStartPoint(null);
+  setEndPoint(null);
 }}
       className="rounded border border-white/10 px-2 py-1 text-xs text-slate-300 hover:bg-white/10"
     >
