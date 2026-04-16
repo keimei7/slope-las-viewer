@@ -17,7 +17,98 @@ type SavedLine = {
   straightLength: number;
   surfaceLength: number;
 };
+function getTriangleVerticesFromLines(lines: SavedLine[]) {
+  if (lines.length !== 3) return null;
 
+  const pts: PickedPoint[] = [];
+
+  const endpoints = lines.flatMap((l) => [l.start, l.end]);
+
+  for (let i = 0; i < endpoints.length; i++) {
+    for (let j = i + 1; j < endpoints.length; j++) {
+      const a = endpoints[i];
+      const b = endpoints[j];
+
+      const dx = a.x - b.x;
+      const dy = a.y - b.y;
+      const dz = a.z - b.z;
+
+      const d = Math.sqrt(dx * dx + dy * dy + dz * dz);
+
+      if (d < 0.01) {
+        pts.push(a);
+      }
+    }
+  }
+
+  // 重複除去
+  const unique: PickedPoint[] = [];
+
+  for (const p of pts) {
+    if (
+      !unique.some(
+        (u) =>
+          Math.abs(u.x - p.x) < 0.01 &&
+          Math.abs(u.y - p.y) < 0.01 &&
+          Math.abs(u.z - p.z) < 0.01,
+      )
+    ) {
+      unique.push(p);
+    }
+  }
+
+  if (unique.length !== 3) return null;
+
+  return unique;
+}
+function TriangleMesh({
+  triangle,
+  savedLines,
+  bounds,
+  zScale,
+}: {
+  triangle: any;
+  savedLines: SavedLine[];
+  bounds: ReturnType<typeof computeBounds>;
+  zScale: number;
+}) {
+  const lines = triangle.lineIds
+    .map((id: string) => savedLines.find((l) => l.id === id))
+    .filter(Boolean) as SavedLine[];
+
+  const vertices = getTriangleVerticesFromLines(lines);
+  if (!vertices) return null;
+
+  const positions = new Float32Array([
+    vertices[0].x - bounds.cx,
+    vertices[0].y - bounds.cy,
+    (vertices[0].z - bounds.cz) * zScale,
+
+    vertices[1].x - bounds.cx,
+    vertices[1].y - bounds.cy,
+    (vertices[1].z - bounds.cz) * zScale,
+
+    vertices[2].x - bounds.cx,
+    vertices[2].y - bounds.cy,
+    (vertices[2].z - bounds.cz) * zScale,
+  ]);
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+  geometry.setIndex([0, 1, 2]);
+  geometry.computeVertexNormals();
+
+  return (
+    <mesh geometry={geometry}>
+      <meshBasicMaterial
+        color="#22d3ee"
+        opacity={0.25}
+        transparent
+        side={THREE.DoubleSide}
+      />
+    </mesh>
+  );
+}
 function computeBounds(points: Point3[]) {
   if (points.length === 0) {
     return {
@@ -830,6 +921,15 @@ hoverTriangleId: string | null;
   bounds={bounds}
   zScale={zScale}
 />
+{savedTriangles.map((triangle) => (
+  <TriangleMesh
+    key={triangle.id}
+    triangle={triangle}
+    savedLines={savedLines}
+    bounds={bounds}
+    zScale={zScale}
+  />
+))}
         <CameraRig
           points={points}
           zScale={zScale}
