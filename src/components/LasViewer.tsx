@@ -703,11 +703,12 @@ function DevelopmentPreview({
   savedLines: SavedLine[];
   activeTriangleId: string | null;
 }) {
-  const dev = useMemo(() => {
-    return buildDevelopment(savedTriangles, savedLines);
-  }, [savedTriangles, savedLines]);
+  const dev = useMemo(
+    () => buildDevelopmentProjection(savedTriangles, savedLines),
+    [savedTriangles, savedLines],
+  );
 
-  if (!dev || dev.triangles.length === 0) {
+  if (!dev || dev.projectedTriangles.length === 0) {
     return (
       <div className="flex h-full items-center justify-center text-sm text-slate-400">
         三角形を作成すると、ここに展開図が出ます。
@@ -719,23 +720,16 @@ function DevelopmentPreview({
   const height = 280;
   const pad = 24;
 
-  const allPoints = dev.triangles.flatMap((tri) => tri.points);
-
-  const minX = Math.min(...allPoints.map((p) => p.x));
-  const maxX = Math.max(...allPoints.map((p) => p.x));
-  const minY = Math.min(...allPoints.map((p) => p.y));
-  const maxY = Math.max(...allPoints.map((p) => p.y));
-
-  const spanX = Math.max(maxX - minX, 0.001);
-  const spanY = Math.max(maxY - minY, 0.001);
+  const spanX = Math.max(dev.maxX - dev.minX, 0.001);
+  const spanY = Math.max(dev.maxY - dev.minY, 0.001);
 
   const scale = Math.min(
     (width - pad * 2) / spanX,
     (height - pad * 2) / spanY,
   );
 
-  const tx = (x: number) => pad + (x - minX) * scale;
-  const ty = (y: number) => height - pad - (y - minY) * scale;
+  const tx = (x: number) => pad + (x - dev.minX) * scale;
+  const ty = (y: number) => height - pad - (y - dev.minY) * scale;
 
   return (
     <svg
@@ -754,35 +748,49 @@ function DevelopmentPreview({
         strokeWidth="1"
       />
 
-      {dev.triangles.map((tri) => {
-        const isActive = activeTriangleId === tri.id;
+      {dev.projectedTriangles.map(({ triangle, points }) => {
+        const isActive = activeTriangleId === triangle.id;
 
         return (
-          <polygon
-            key={tri.id}
-            points={tri.points.map((p) => `${tx(p.x)},${ty(p.y)}`).join(" ")}
-            fill={isActive ? "rgba(34,211,238,0.24)" : "rgba(34,211,238,0.16)"}
-            stroke={isActive ? "#67e8f9" : "#22d3ee"}
-            strokeWidth={isActive ? 2.2 : 1.4}
-          />
-        );
-      })}
+          <g key={triangle.id}>
+            <polygon
+              points={points.map((p) => `${tx(p.x)},${ty(p.y)}`).join(" ")}
+              fill={isActive ? "rgba(34,211,238,0.24)" : "rgba(34,211,238,0.16)"}
+              stroke={isActive ? "#67e8f9" : "#22d3ee"}
+              strokeWidth={isActive ? 2.2 : 1.4}
+            />
 
-      {dev.edges.map((edge) => {
-        const mx = (edge.p1.x + edge.p2.x) / 2;
-        const my = (edge.p1.y + edge.p2.y) / 2;
+            {points.map((p, i) => {
+              const next = points[(i + 1) % 3];
+              const mx = (p.x + next.x) / 2;
+              const my = (p.y + next.y) / 2;
 
-        return (
-          <text
-            key={edge.lineId}
-            x={tx(mx)}
-            y={ty(my)}
-            fontSize="10"
-            fill="#e2e8f0"
-            textAnchor="middle"
-          >
-            {edge.lineId} {edge.length.toFixed(2)}m
-          </text>
+              const dx = next.x - p.x;
+              const dy = next.y - p.y;
+              let angleDeg = (Math.atan2(-dy, dx) * 180) / Math.PI;
+              if (angleDeg > 90 || angleDeg < -90) {
+                angleDeg += 180;
+              }
+
+              const lineName = triangle.lineNames[i];
+              const edgeLength = triangle.edgeLengths[i];
+
+              return (
+                <text
+                  key={`${triangle.id}-${lineName}`}
+                  x={tx(mx)}
+                  y={ty(my)}
+                  fontSize="8"
+                  fill="#e2e8f0"
+                  textAnchor="middle"
+                  dominantBaseline="middle"
+                  transform={`rotate(${angleDeg}, ${tx(mx)}, ${ty(my)})`}
+                >
+                  {lineName} / {edgeLength.toFixed(2)}m
+                </text>
+              );
+            })}
+          </g>
         );
       })}
     </svg>
