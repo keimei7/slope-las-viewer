@@ -400,20 +400,20 @@ const activeTriangle = useMemo(() => {
   return savedTriangles[savedTriangles.length - 1] ?? null;
 }, [hoverTriangleId, savedTriangles]);
 
-  const displayPoints = useMemo(() => {
-    if (points.length <= maxDisplayPoints) {
-      return points;
-    }
+const displayPoints = useMemo(() => {
+  if (points.length <= maxDisplayPoints) {
+    return points;
+  }
 
-    const step = Math.ceil(points.length / maxDisplayPoints);
-    const sampled: Point3[] = [];
+  const step = Math.ceil(points.length / maxDisplayPoints);
+  const sampled: Point3[] = [];
 
-    for (let i = 0; i < points.length; i += step) {
-      sampled.push(points[i]);
-    }
+  for (let i = 0; i < points.length; i += step) {
+    sampled.push(points[i]);
+  }
 
-    return sampled;
-  }, [points, maxDisplayPoints]);
+  return sampled;
+}, [points, maxDisplayPoints]);
 
   const stats = useMemo(() => {
     if (points.length === 0) return null;
@@ -1111,7 +1111,7 @@ setIsPinned(false);
             </div>
 
             <div className="flex-1 overflow-y-auto overscroll-contain p-4">
-              <div className="rounded-xl border border-white/10 bg-black/15 p-3">
+           <div className="rounded-xl border border-white/10 bg-black/15 p-3">
   <div className="flex items-center justify-between gap-3">
     <div className="text-xs font-semibold uppercase tracking-wide text-cyan-100/80">
       図面プレビュー
