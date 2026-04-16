@@ -232,7 +232,13 @@ const horizontalness = Math.abs(ux);
       if (perpDist > sliceWidth) continue;
 
       const targetZError = Math.abs(p.z - targetZ);
-const score = perpDist * 0.7 + alongError * 0.15 + targetZError * 0.15;
+const perpWeight =
+  guideMode === "angled" ? 0.82 : guideMode === "horizontal" ? 0.78 : 0.7;
+
+const score =
+  perpDist * perpWeight +
+  alongError * 0.12 +
+  targetZError * (1 - perpWeight - 0.12);
 
 candidates.push({
   point: p,
@@ -316,11 +322,11 @@ if (top.length > 1) {
 let lockRatio = 0.45;
 
 if (guideMode === "horizontal") {
-  lockRatio = 0.9;
+  lockRatio = 0.92;
 } else if (guideMode === "vertical") {
-  lockRatio = 0.15;
+  lockRatio = 0.25;
 } else if (guideMode === "angled") {
-  lockRatio = 0.45;
+  lockRatio = 0.72;
 }
 
 samples.push({
@@ -666,6 +672,9 @@ const activeTriangle = useMemo(() => {
   }
   return savedTriangles[savedTriangles.length - 1] ?? null;
 }, [hoverTriangleId, savedTriangles]);
+const totalTriangleArea = useMemo(() => {
+  return savedTriangles.reduce((sum, triangle) => sum + triangle.area, 0);
+}, [savedTriangles]);
 
 const displayPoints = useMemo(() => {
   if (points.length <= maxDisplayPoints) {
@@ -1196,11 +1205,11 @@ setHoverSnapPoint(null);
     <input
       type="range"
       min={1}
-      max={20}
+      max={50}
       step={1}
       value={divisionCount}
       onChange={(e) =>
-        setDivisionCount(clamp(Number(e.target.value), 1, 20))
+        setDivisionCount(clamp(Number(e.target.value), 1, 50))
       }
       className="mt-1 w-full"
     />
@@ -1433,6 +1442,9 @@ setHoverSnapPoint(null);
       <div className="text-xs font-semibold uppercase tracking-wide text-cyan-100/80">
         図面プレビュー
       </div>
+       <div className="mt-1 text-xs text-emerald-300">
+      合計面積: {totalTriangleArea.toFixed(3)} ㎡
+    </div>
       {activeTriangle ? (
         <div className="mt-1 text-xs text-slate-400">
           {activeTriangle.name}

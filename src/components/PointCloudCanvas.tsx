@@ -102,11 +102,11 @@ function TriangleMesh({
   return (
     <mesh geometry={geometry}>
       <meshBasicMaterial
-       color="#22d3ee"
-opacity={0.12}
-        transparent
-        side={THREE.DoubleSide}
-      />
+  color="#22d3ee"
+  opacity={0.2}
+  transparent
+  side={THREE.DoubleSide}
+/>
     </mesh>
   );
 }
@@ -621,10 +621,12 @@ function SavedLinesLayer({
   ])}
  color={
   selectedLineIds.includes(line.id)
-    ? "#22c55e" // 選択：落ち着いた緑
-    : "#16a34a" // 通常：さらに暗め
+    ? "#ef4444"
+    : hoverLineId === line.id
+      ? "#f59e0b"
+      : "#60a5fa"
 }
-lineWidth={selectedLineIds.includes(line.id) ? 2.8 : 2.0}
+lineWidth={selectedLineIds.includes(line.id) ? 3.2 : hoverLineId === line.id ? 2.6 : 2.0}
   onPointerOver={(e) => {
     e.stopPropagation();
     onHoverSavedLine(line.id);
