@@ -510,217 +510,139 @@ function snapToExistingPoint(
   {fileName || ""}
 </div>
             </div>
+<div className="mt-4 rounded-xl border border-white/10 bg-black/15 p-3">
+  <div className="text-xs font-semibold uppercase tracking-wide text-cyan-100/80">
+    テープ設定
+  </div>
 
-            <div className="mt-4 rounded-xl border border-white/10 bg-black/15 p-3">
-              <div className="text-xs font-semibold uppercase tracking-wide text-cyan-100/80">
-                計測点
-              </div>
-              <button
-  type="button"
-  onClick={() => {
-    if (!startPoint || !endPoint) return;
+  <div className="mt-3">
+    <label className="block text-xs text-slate-300">
+      分割数: {divisionCount}
+    </label>
+    <input
+      type="range"
+      min={1}
+      max={20}
+      step={1}
+      value={divisionCount}
+      onChange={(e) =>
+        setDivisionCount(clamp(Number(e.target.value), 1, 20))
+      }
+      className="mt-1 w-full"
+    />
+  </div>
 
-    setSavedLines((prev) => [
-      ...prev,
-      {
-        start: startPoint,
-        end: endPoint,
-        tapePoints,
-      },
-    ]);
-  }}
-  className="mt-2 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm hover:bg-white/10"
->
-  この線を保存
-</button>
+  <div className="mt-3">
+    <label className="block text-xs text-slate-300">
+      近傍探索半径: {(searchRadius * 100).toFixed(0)} cm
+    </label>
+    <input
+      type="range"
+      min={0.005}
+      max={0.05}
+      step={0.0025}
+      value={searchRadius}
+      onChange={(e) =>
+        setSearchRadius(clamp(Number(e.target.value), 0.005, 0.05))
+      }
+      className="mt-1 w-full"
+    />
+  </div>
 
-              <div className="mt-2 text-sm">
-                <div>
-                  <span className="text-slate-400">始点:</span>{" "}
-                  {startPoint
-                    ? `${startPoint.x.toFixed(2)}, ${startPoint.y.toFixed(2)}, ${startPoint.z.toFixed(2)}`
-                    : "-"}
-                </div>
-                <div className="mt-1">
-                  <span className="text-slate-400">終点:</span>{" "}
-                  {endPoint
-                    ? `${endPoint.x.toFixed(2)}, ${endPoint.y.toFixed(2)}, ${endPoint.z.toFixed(2)}`
-                    : "-"}
-                </div>
-                <div className="mt-1">
-                  <span className="text-slate-400">直線距離:</span>{" "}
-                  {pickedDistance !== null ? `${pickedDistance.toFixed(3)} m` : "-"}
-                </div>
-                <div className="mt-1">
-                  <span className="text-slate-400">沿わせ長:</span>{" "}
-                  {tapeDistance !== null ? `${tapeDistance.toFixed(3)} m` : "-"}
-                </div>
-              </div>
+  <div className="mt-3">
+    <label className="block text-xs text-slate-300">
+      断面スライス幅: {(sliceWidth * 100).toFixed(0)} cm
+    </label>
+    <input
+      type="range"
+      min={0.005}
+      max={0.05}
+      step={0.0025}
+      value={sliceWidth}
+      onChange={(e) =>
+        setSliceWidth(clamp(Number(e.target.value), 0.005, 0.05))
+      }
+      className="mt-1 w-full"
+    />
+  </div>
 
-              <div className="mt-3 flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={clearPickedPoints}
-                  className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-slate-100 hover:bg-white/10"
-                >
-                  点をクリア
-                </button>
+  <div className="mt-3 text-xs text-slate-400">
+    サンプル点数: {tapePoints.length}
+  </div>
+</div>
 
-                <button
-                  type="button"
-                  onClick={resetMeasuredPointsOnly}
-                  className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-slate-100 hover:bg-white/10"
-                >
-                  測点リセット
-                </button>
-              </div>
+<div className="mt-4 rounded-xl border border-white/10 bg-black/15 p-3">
+  <div className="text-xs font-semibold uppercase tracking-wide text-cyan-100/80">
+    表示設定
+  </div>
 
-              <button
-                type="button"
-                onClick={() => setIsPinned((prev) => !prev)}
-                className="mt-2 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-slate-100 hover:bg-white/10"
-              >
-                {isPinned ? "ピン留め解除" : "この2点をピン留め"}
-              </button>
+  <div className="mt-3">
+    <label className="block text-xs text-slate-300">
+      表示点数上限: {maxDisplayPoints.toLocaleString()}
+    </label>
+    <input
+      type="range"
+      min={100000}
+      max={2000000}
+      step={100000}
+      value={maxDisplayPoints}
+      onChange={(e) =>
+        setMaxDisplayPoints(clamp(Number(e.target.value), 100000, 2000000))
+      }
+      className="mt-1 w-full"
+    />
+  </div>
 
-              <div className="mt-2 text-xs text-slate-400">
-                ピン状態: {isPinned ? "固定中" : "未固定"}
-              </div>
-            </div>
+  <div className="mt-3">
+    <label className="block text-xs text-slate-300">
+      Z誇張: {zScale.toFixed(2)}x
+    </label>
+    <input
+      type="range"
+      min={1}
+      max={5}
+      step={0.05}
+      value={zScale}
+      onChange={(e) =>
+        setZScale(clamp(Number(e.target.value), 1, 5))
+      }
+      className="mt-1 w-full"
+    />
+  </div>
 
-            <div className="mt-4 rounded-xl border border-white/10 bg-black/15 p-3">
-              <div className="text-xs font-semibold uppercase tracking-wide text-cyan-100/80">
-                テープ設定
-              </div>
+  <div className="mt-3">
+    <label className="block text-xs text-slate-300">
+      点サイズ: {pointSize.toFixed(3)}
+    </label>
+    <input
+      type="range"
+      min={0.001}
+      max={0.05}
+      step={0.001}
+      value={pointSize}
+      onChange={(e) =>
+        setPointSize(clamp(Number(e.target.value), 0.001, 0.05))
+      }
+      className="mt-1 w-full"
+    />
+  </div>
 
-              <div className="mt-3">
-                <label className="block text-xs text-slate-300">
-                  分割数: {divisionCount}
-                </label>
-              <input
-  type="range"
-  min={1}
-  max={20}
-  step={1}
-  value={divisionCount}
-  onChange={(e) =>
-    setDivisionCount(clamp(Number(e.target.value), 1, 20))
-  }
-  className="mt-1 w-full"
-/>
-              </div>
-
-              <div className="mt-3">
-                <label className="block text-xs text-slate-300">
-                  近傍探索半径: {(searchRadius * 100).toFixed(0)} cm
-                </label>
-                <input
-                  type="range"
-                  min={0.005}
-max={0.05}
-step={0.0025}
-                  value={searchRadius}
-                  onChange={(e) =>
-  setSearchRadius(clamp(Number(e.target.value), 0.005, 0.05))
-}
-                  className="mt-1 w-full"
-                />
-              </div>
-
-              <div className="mt-3">
-                <label className="block text-xs text-slate-300">
-                  断面スライス幅: {(sliceWidth * 100).toFixed(0)} cm
-                </label>
-                <input
-  type="range"
-  min={0.005}
-  max={0.05}
-  step={0.0025}
-  value={searchRadius}
-  onChange={(e) =>
-    setSearchRadius(clamp(Number(e.target.value), 0.005, 0.05))
-  }
-  className="mt-1 w-full"
-/>
-              </div>
-
-              <div className="mt-3 text-xs text-slate-400">
-                サンプル点数: {tapePoints.length}
-              </div>
-            </div>
-
-            <div className="mt-4 rounded-xl border border-white/10 bg-black/15 p-3">
-              <div className="text-xs font-semibold uppercase tracking-wide text-cyan-100/80">
-                表示設定
-              </div>
-
-              <div className="mt-3">
-                <label className="block text-xs text-slate-300">
-                  表示点数上限: {maxDisplayPoints.toLocaleString()}
-                </label>
-                <input
-                  type="range"
-                  min={100000}
-                  max={2000000}
-                  step={100000}
-                  value={maxDisplayPoints}
-                  onChange={(e) =>
-                    setMaxDisplayPoints(clamp(Number(e.target.value), 100000, 2000000))
-                  }
-                  className="mt-1 w-full"
-                />
-              </div>
-
-              <div className="mt-3">
-                <label className="block text-xs text-slate-300">
-                  Z誇張: {zScale.toFixed(2)}x
-                </label>
-                <input
-                  type="range"
-                  min={1}
-                  max={5}
-                  step={0.05}
-                  value={zScale}
-                  onChange={(e) =>
-                    setZScale(clamp(Number(e.target.value), 1, 5))
-                  }
-                  className="mt-1 w-full"
-                />
-              </div>
-
-              <div className="mt-3">
-                <label className="block text-xs text-slate-300">
-                  点サイズ: {pointSize.toFixed(3)}
-                </label>
-                <input
-                  type="range"
-                  min={0.001}
-                  max={0.05}
-                  step={0.001}
-                  value={pointSize}
-                  onChange={(e) =>
-                    setPointSize(clamp(Number(e.target.value), 0.001, 0.05))
-                  }
-                  className="mt-1 w-full"
-                />
-              </div>
-
-              <div className="mt-3">
-                <label className="block text-xs text-slate-300">
-                  計測ライン強調幅: {focusWidth.toFixed(1)} m
-                </label>
-                <input
-                  type="range"
-                  min={1}
-                  max={20}
-                  step={0.5}
-                  value={focusWidth}
-                  onChange={(e) =>
-                    setFocusWidth(clamp(Number(e.target.value), 1, 20))
-                  }
-                  className="mt-1 w-full"
-                />
-              </div>
+  <div className="mt-3">
+    <label className="block text-xs text-slate-300">
+      計測ライン強調幅: {focusWidth.toFixed(1)} m
+    </label>
+    <input
+      type="range"
+      min={1}
+      max={20}
+      step={0.5}
+      value={focusWidth}
+      onChange={(e) =>
+        setFocusWidth(clamp(Number(e.target.value), 1, 20))
+      }
+      className="mt-1 w-full"
+    />
+  </div>
 
               <div className="mt-4 flex flex-wrap gap-2">
                 <button
