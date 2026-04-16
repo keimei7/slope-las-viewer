@@ -245,7 +245,7 @@ const [sliceWidth, setSliceWidth] = useState(0.02);     // 2cm
   const [rightWidth, setRightWidth] = useState(380);
   const [leftCollapsed, setLeftCollapsed] = useState(false);
   const [rightCollapsed, setRightCollapsed] = useState(false);
-
+const [hoverSnapPoint, setHoverSnapPoint] = useState<PickedPoint | null>(null);
   const [savedLines, setSavedLines] = useState<SavedLine[]>([]);
 
   const displayPoints = useMemo(() => {
@@ -505,22 +505,21 @@ setIsPinned(false);
   return (
     <div className="relative h-screen w-screen overflow-hidden bg-slate-950 text-slate-100">
       <PointCloudCanvas
-        points={displayPoints}
-        startPoint={startPoint}
-        endPoint={endPoint}
-        onPickPoint={handlePick}
-        zScale={zScale}
-        pointSize={pointSize}
-        viewMode={viewMode}
-        viewResetKey={viewResetKey}
-        focusWidth={focusWidth}
-        sliceWidth={sliceWidth}
-        tapePoints={tapePoints}
-          savedLines={savedLines}
-          onHoverPoint={handleHoverPoint}
-hoverSnapPoint={hoverSnapPoint}
-
-      />
+  points={displayPoints}
+  startPoint={startPoint}
+  endPoint={endPoint}
+  onPickPoint={handlePick}
+  onHoverPoint={handleHoverPoint}
+  hoverSnapPoint={hoverSnapPoint}
+  zScale={zScale}
+  pointSize={pointSize}
+  viewMode={viewMode}
+  viewResetKey={viewResetKey}
+  focusWidth={focusWidth}
+  sliceWidth={sliceWidth}
+  tapePoints={tapePoints}
+  savedLines={savedLines}
+/>
 
       {!leftCollapsed ? (
         <aside
