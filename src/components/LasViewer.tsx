@@ -383,6 +383,200 @@ type DevPoint2D = {
   y: number;
 };
 
+type DevelopedTriangle = {
+  id: string;
+  name: string;
+  points: [DevPoint2D, DevPoint2D, DevPoint2D];
+  lineIds: [string, string, string];
+};
+
+type DevelopedEdge = {
+  lineId: string;
+  p1: DevPoint2D;
+  p2: DevPoint2D;
+  length: number;
+};
+
+function placeBaseTriangle(
+  lengths: [number, number, number],
+): [DevPoint2D, DevPoint2D, DevPoint2D] {
+  const [a, b, c] = lengths;
+
+  const A = { x: 0, y: 0 };
+  const B = { x: a, y: 0 };
+
+  const cosC = (a * a + b * b - c * c) / (2 * a * b);
+  const sinC = Math.sqrt(Math.max(0, 1 - cosC * cosC));
+
+  const C = {
+    x: cosC * b,
+    y: sinC * b,
+  };
+
+  return [A, B, C];
+}
+function placeAdjacentTriangle(
+  sharedP1: DevPoint2D,
+  sharedP2: DevPoint2D,
+  sharedLength: number,
+  otherLength1: number,
+  otherLength2: number,
+): DevPoint2D {
+  const dx = sharedP2.x - sharedP1.x;
+  const dy = sharedP2.y - sharedP1.y;
+  const baseLen = Math.sqrt(dx * dx + dy * dy);
+
+  const ux = dx / baseLen;
+  const uy = dy / baseLen;
+
+  const nx = -uy;
+  const ny = ux;
+
+  const cosTheta =
+    (sharedLength * sharedLength +
+      otherLength1 * otherLength1 -
+      otherLength2 * otherLength2) /
+    (2 * sharedLength * otherLength1);
+
+  const sinTheta = Math.sqrt(Math.max(0, 1 - cosTheta * cosTheta));
+
+  const px =
+    sharedP1.x +
+    ux * cosTheta * otherLength1 +
+    nx * sinTheta * otherLength1;
+
+  const py =
+    sharedP1.y +
+    uy * cosTheta * otherLength1 +
+    ny * sinTheta * otherLength1;
+
+  return { x: px, y: py };
+}
+function buildDevelopment(
+  triangles: SavedTriangle[],
+  lines: SavedLine[],
+): {
+  triangles: DevelopedTriangle[];
+  edges: DevelopedEdge[];
+} {
+  if (triangles.length === 0) {
+    return { triangles: [], edges: [] };
+  }
+
+  const lineMap = new Map<string, SavedLine>();
+  lines.forEach((l) => lineMap.set(l.id, l));
+
+  const lineToTriangles = new Map<string, string[]>();
+
+  for (const t of triangles) {
+    for (const lid of t.lineIds) {
+      if (!lineToTriangles.has(lid)) {
+        lineToTriangles.set(lid, []);
+      }
+      lineToTriangles.get(lid)!.push(t.id);
+    }
+  }
+
+  const placed = new Map<string, DevelopedTriangle>();
+
+  const base = triangles[0];
+
+  const baseLengths = base.edgeLengths;
+
+  const basePoints = placeBaseTriangle(baseLengths);
+
+  placed.set(base.id, {
+    id: base.id,
+    name: base.name,
+    points: basePoints,
+    lineIds: base.lineIds,
+  });
+
+  const queue = [base];
+
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    const currentPlaced = placed.get(current.id)!;
+
+    for (let i = 0; i < 3; i++) {
+      const lineId = current.lineIds[i];
+      const neighbors = lineToTriangles.get(lineId) || [];
+
+      for (const nid of neighbors) {
+        if (nid === current.id) continue;
+        if (placed.has(nid)) continue;
+
+        const nextTri = triangles.find((t) => t.id === nid)!;
+
+        const sharedIndex = nextTri.lineIds.findIndex((l) => l === lineId);
+
+        const otherIdx1 = (sharedIndex + 1) % 3;
+        const otherIdx2 = (sharedIndex + 2) % 3;
+
+        const sharedLength = nextTri.edgeLengths[sharedIndex];
+        const len1 = nextTri.edgeLengths[otherIdx1];
+        const len2 = nextTri.edgeLengths[otherIdx2];
+
+        const p1 = currentPlaced.points[i];
+        const p2 = currentPlaced.points[(i + 1) % 3];
+
+        const newPoint = placeAdjacentTriangle(
+          p1,
+          p2,
+          sharedLength,
+          len1,
+          len2,
+        );
+
+        const newTri: DevelopedTriangle = {
+          id: nextTri.id,
+          name: nextTri.name,
+          lineIds: nextTri.lineIds,
+          points: [
+            p1,
+            p2,
+            newPoint,
+          ],
+        };
+
+        placed.set(nextTri.id, newTri);
+        queue.push(nextTri);
+      }
+    }
+  }
+
+  // 辺ラベル用
+  const edges: DevelopedEdge[] = [];
+
+  const used = new Set<string>();
+
+  for (const tri of placed.values()) {
+    for (let i = 0; i < 3; i++) {
+      const lineId = tri.lineIds[i];
+      if (used.has(lineId)) continue;
+
+      const line = lineMap.get(lineId);
+      if (!line) continue;
+
+      const p1 = tri.points[i];
+      const p2 = tri.points[(i + 1) % 3];
+
+      edges.push({
+        lineId,
+        p1,
+        p2,
+        length: line.surfaceLength,
+      });
+
+      used.add(lineId);
+    }
+  }
+
+  return {
+    triangles: Array.from(placed.values()),
+    edges,
+  };
+}
 function makePointKey(p: PickedPoint) {
   return `${p.x.toFixed(3)}|${p.y.toFixed(3)}|${p.z.toFixed(3)}`;
 }
@@ -500,7 +694,6 @@ function buildDevelopmentProjection(
     maxY,
   };
 }
-
 function DevelopmentPreview({
   savedTriangles,
   savedLines,
@@ -510,12 +703,11 @@ function DevelopmentPreview({
   savedLines: SavedLine[];
   activeTriangleId: string | null;
 }) {
-  const dev = useMemo(
-    () => buildDevelopmentProjection(savedTriangles, savedLines),
-    [savedTriangles, savedLines],
-  );
+  const dev = useMemo(() => {
+    return buildDevelopment(savedTriangles, savedLines);
+  }, [savedTriangles, savedLines]);
 
-  if (!dev || dev.projectedTriangles.length === 0) {
+  if (!dev || dev.triangles.length === 0) {
     return (
       <div className="flex h-full items-center justify-center text-sm text-slate-400">
         三角形を作成すると、ここに展開図が出ます。
@@ -527,15 +719,23 @@ function DevelopmentPreview({
   const height = 280;
   const pad = 24;
 
-  const spanX = Math.max(dev.maxX - dev.minX, 0.001);
-  const spanY = Math.max(dev.maxY - dev.minY, 0.001);
+  const allPoints = dev.triangles.flatMap((tri) => tri.points);
+
+  const minX = Math.min(...allPoints.map((p) => p.x));
+  const maxX = Math.max(...allPoints.map((p) => p.x));
+  const minY = Math.min(...allPoints.map((p) => p.y));
+  const maxY = Math.max(...allPoints.map((p) => p.y));
+
+  const spanX = Math.max(maxX - minX, 0.001);
+  const spanY = Math.max(maxY - minY, 0.001);
+
   const scale = Math.min(
     (width - pad * 2) / spanX,
     (height - pad * 2) / spanY,
   );
 
-  const tx = (x: number) => pad + (x - dev.minX) * scale;
-  const ty = (y: number) => height - pad - (y - dev.minY) * scale;
+  const tx = (x: number) => pad + (x - minX) * scale;
+  const ty = (y: number) => height - pad - (y - minY) * scale;
 
   return (
     <svg
@@ -544,26 +744,45 @@ function DevelopmentPreview({
       preserveAspectRatio="xMidYMid meet"
     >
       <rect x="0" y="0" width={width} height={height} fill="#020617" />
-<rect
-  x="2"
-  y="2"
-  width={width - 4}
-  height={height - 4}
-  fill="none"
-  stroke="#64748b"
-  strokeWidth="1"
-/>
-      {dev.projectedTriangles.map(({ triangle, points }) => {
-        const isActive = activeTriangleId === triangle.id;
+      <rect
+        x="2"
+        y="2"
+        width={width - 4}
+        height={height - 4}
+        fill="none"
+        stroke="#64748b"
+        strokeWidth="1"
+      />
+
+      {dev.triangles.map((tri) => {
+        const isActive = activeTriangleId === tri.id;
 
         return (
           <polygon
-            key={triangle.id}
-            points={points.map((p) => `${tx(p.x)},${ty(p.y)}`).join(" ")}
-            fill={isActive ? "rgba(34,211,238,0.24)" : "rgba(34,211,238,0.12)"}
+            key={tri.id}
+            points={tri.points.map((p) => `${tx(p.x)},${ty(p.y)}`).join(" ")}
+            fill={isActive ? "rgba(34,211,238,0.24)" : "rgba(34,211,238,0.16)"}
             stroke={isActive ? "#67e8f9" : "#22d3ee"}
-            strokeWidth={isActive ? 2.5 : 1.6}
+            strokeWidth={isActive ? 2.2 : 1.4}
           />
+        );
+      })}
+
+      {dev.edges.map((edge) => {
+        const mx = (edge.p1.x + edge.p2.x) / 2;
+        const my = (edge.p1.y + edge.p2.y) / 2;
+
+        return (
+          <text
+            key={edge.lineId}
+            x={tx(mx)}
+            y={ty(my)}
+            fontSize="10"
+            fill="#e2e8f0"
+            textAnchor="middle"
+          >
+            {edge.lineId} {edge.length.toFixed(2)}m
+          </text>
         );
       })}
     </svg>
@@ -691,6 +910,9 @@ const isSamePoint = (a: PickedPoint, b: PickedPoint, eps = 0.001) => {
     Math.abs(a.z - b.z) < eps
   );
 };
+const dev = useMemo(() => {
+  return buildDevelopment(savedTriangles, savedLines);
+}, [savedTriangles, savedLines]);
 
 const isDuplicateLine = useMemo(() => {
   if (!startPoint || !endPoint) return false;
