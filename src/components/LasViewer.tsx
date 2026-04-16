@@ -1165,22 +1165,7 @@ setIsPinned(false);
   </div>
   {startPoint ? (
   <div className="mt-3 rounded-lg border border-cyan-400/20 bg-cyan-400/5 p-2 text-xs">
-    <div className="text-cyan-200">
-      ガイド:{" "}
-      {guideMode === "horizontal"
-        ? "水平候補"
-        : guideMode === "vertical"
-          ? "垂直候補"
-          : guideMode === "angled"
-            ? "斜め候補"
-            : "待機中"}
-    </div>
-    <div className="mt-1 text-slate-400">
-      角度: {guideAngleDeg !== null ? `${guideAngleDeg.toFixed(1)}°` : "-"}
-    </div>
-    <div className="mt-1 text-slate-500">
-      hover: {hoverPoint ? "あり" : "なし"}
-    </div>
+   
   </div>
 ) : null}
 </div>

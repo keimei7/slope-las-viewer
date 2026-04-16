@@ -102,8 +102,8 @@ function TriangleMesh({
   return (
     <mesh geometry={geometry}>
       <meshBasicMaterial
-        color="#22d3ee"
-        opacity={0.25}
+       color="#22d3ee"
+opacity={0.12}
         transparent
         side={THREE.DoubleSide}
       />
@@ -619,14 +619,12 @@ function SavedLinesLayer({
     p.y - bounds.cy,
     (p.z - bounds.cz) * zScale,
   ])}
-  color={
-    selectedLineIds.includes(line.id)
-      ? "#ef4444"
-      : hoverLineId === line.id
-        ? "#f59e0b"
-        : "#4ade80"
-  }
-lineWidth={selectedLineIds.includes(line.id) ? 3.2 : hoverLineId === line.id ? 2.8 : 2.2}
+ color={
+  selectedLineIds.includes(line.id)
+    ? "#22c55e" // 選択：落ち着いた緑
+    : "#16a34a" // 通常：さらに暗め
+}
+lineWidth={selectedLineIds.includes(line.id) ? 2.8 : 2.0}
   onPointerOver={(e) => {
     e.stopPropagation();
     onHoverSavedLine(line.id);
@@ -956,23 +954,15 @@ hoverTriangleId: string | null;
           />
         ) : null}
 
-        {startPoint && endPoint ? (
-          <>
-            <PickLine
-              startPoint={startPoint}
-              endPoint={endPoint}
-              bounds={bounds}
-              zScale={zScale}
-            />
-            <SliceGuide
-              startPoint={startPoint}
-              endPoint={endPoint}
-              bounds={bounds}
-              zScale={zScale}
-              sliceWidth={sliceWidth}
-            />
-          </>
-        ) : null}
+       {startPoint && !endPoint && hoverSnapPoint ? (
+  <SliceGuide
+    startPoint={startPoint}
+    endPoint={hoverSnapPoint}
+    bounds={bounds}
+    zScale={zScale}
+    sliceWidth={sliceWidth}
+  />
+) : null}
 <HoverSnapMarker point={hoverSnapPoint} bounds={bounds} zScale={zScale} />
 <GuidePreviewLine
   startPoint={startPoint}
