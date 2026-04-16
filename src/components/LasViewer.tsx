@@ -351,27 +351,37 @@ const [sliceWidth, setSliceWidth] = useState(0.02);     // 2cm
 function snapToExistingPoint(
   p: PickedPoint,
   savedLines: SavedLine[],
-  radius = 0.05
+  endpointRadius = 0.15,
+  tapePointRadius = 0.04,
 ): PickedPoint {
-  
   let best = p;
   let bestDist = Infinity;
 
-  const allPoints: PickedPoint[] = [];
-
   for (const line of savedLines) {
-    allPoints.push(line.start, line.end, ...line.tapePoints);
-  }
+    const endpointCandidates = [line.start, line.end];
 
-  for (const sp of allPoints) {
-    const dx = sp.x - p.x;
-    const dy = sp.y - p.y;
-    const dz = sp.z - p.z;
-    const d = Math.sqrt(dx * dx + dy * dy + dz * dz);
+    for (const sp of endpointCandidates) {
+      const dx = sp.x - p.x;
+      const dy = sp.y - p.y;
+      const dz = sp.z - p.z;
+      const d = Math.sqrt(dx * dx + dy * dy + dz * dz);
 
-    if (d < bestDist && d < radius) {
-      best = sp;
-      bestDist = d;
+      if (d < bestDist && d < endpointRadius) {
+        best = sp;
+        bestDist = d;
+      }
+    }
+
+    for (const sp of line.tapePoints) {
+      const dx = sp.x - p.x;
+      const dy = sp.y - p.y;
+      const dz = sp.z - p.z;
+      const d = Math.sqrt(dx * dx + dy * dy + dz * dz);
+
+      if (d < bestDist && d < tapePointRadius) {
+        best = sp;
+        bestDist = d;
+      }
     }
   }
 
