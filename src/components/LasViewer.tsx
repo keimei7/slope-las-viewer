@@ -1283,17 +1283,7 @@ setHoverSnapPoint(null);
     断面スライス幅: 1 cm（固定）
   </label>
 
-    <input
-      type="range"
-      min={0.005}
-      max={0.05}
-      step={0.0025}
-      value={sliceWidth}
-      onChange={(e) =>
-        setSliceWidth(clamp(Number(e.target.value), 0.005, 0.05))
-      }
-      className="mt-1 w-full"
-    />
+    
   </div>
 
   <div className="mt-3 text-xs text-slate-400">
