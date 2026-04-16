@@ -765,7 +765,8 @@ function CameraRig({
     controls.update();
   }, [points, bounds, zScale, viewMode, viewResetKey]);
 
-  return (
+  
+ return (
   <OrbitControls
     ref={controlsRef}
     enableDamping={false}
@@ -775,7 +776,7 @@ function CameraRig({
     panSpeed={0.8}
     screenSpacePanning={false}
     minPolarAngle={0}
-    maxPolarAngle={Math.PI / 2}
+    maxPolarAngle={viewMode === "top" ? Math.PI / 2 : Math.PI}
   />
 );
 }
