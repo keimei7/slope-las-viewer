@@ -296,15 +296,29 @@ function Triangle2DView({
   triangle,
   savedLines,
 }: {
-  triangle: SavedTriangle;
+  triangle: SavedTriangle | null;
   savedLines: SavedLine[];
 }) {
+  if (!triangle) {
+    return (
+      <div className="flex h-full items-center justify-center text-sm text-slate-400">
+        三角形を作成すると、ここに2D展開図が出ます。
+      </div>
+    );
+  }
+
   const lines = triangle.lineIds
     .map((id) => savedLines.find((l) => l.id === id))
     .filter(Boolean) as SavedLine[];
 
   const vertices = getTriangleVerticesFromLines(lines);
-  if (!vertices) return null;
+  if (!vertices) {
+    return (
+      <div className="flex h-full items-center justify-center text-sm text-slate-400">
+        三角形の頂点を復元できませんでした。
+      </div>
+    );
+  }
 
   const pts = projectTriangleTo2D(vertices[0], vertices[1], vertices[2]);
 
@@ -314,8 +328,8 @@ function Triangle2DView({
   const maxY = Math.max(...pts.map((p) => p.y));
 
   const pad = 24;
-  const width = 260;
-  const height = 220;
+  const width = 520;
+  const height = 280;
 
   const spanX = Math.max(maxX - minX, 0.001);
   const spanY = Math.max(maxY - minY, 0.001);
@@ -334,9 +348,10 @@ function Triangle2DView({
   return (
     <svg
       viewBox={`0 0 ${width} ${height}`}
-      className="h-[220px] w-full rounded-lg bg-slate-950/40"
+      className="h-full w-full rounded-lg bg-slate-950/40"
       preserveAspectRatio="xMidYMid meet"
     >
+      <rect x="0" y="0" width={width} height={height} fill="#020617" />
       <polygon
         points={`${tx(A.x)},${ty(A.y)} ${tx(B.x)},${ty(B.y)} ${tx(C.x)},${ty(C.y)}`}
         fill="rgba(34,211,238,0.18)"
@@ -377,6 +392,13 @@ const [selectedLineIds, setSelectedLineIds] = useState<string[]>([]);
 const [savedTriangles, setSavedTriangles] = useState<SavedTriangle[]>([]);
 const [hoverLineId, setHoverLineId] = useState<string | null>(null);
 const [hoverTriangleId, setHoverTriangleId] = useState<string | null>(null);
+
+const activeTriangle = useMemo(() => {
+  if (hoverTriangleId) {
+    return savedTriangles.find((t) => t.id === hoverTriangleId) ?? null;
+  }
+  return savedTriangles[savedTriangles.length - 1] ?? null;
+}, [hoverTriangleId, savedTriangles]);
 
   const displayPoints = useMemo(() => {
     if (points.length <= maxDisplayPoints) {
@@ -1089,9 +1111,25 @@ setIsPinned(false);
             </div>
 
             <div className="flex-1 overflow-y-auto overscroll-contain p-4">
-              <div className="rounded-xl border border-dashed border-white/10 bg-black/10 p-4 text-sm text-slate-400">
-                図面プレビュー領域
-              </div>
+              <div className="rounded-xl border border-white/10 bg-black/15 p-3">
+  <div className="flex items-center justify-between gap-3">
+    <div className="text-xs font-semibold uppercase tracking-wide text-cyan-100/80">
+      図面プレビュー
+    </div>
+    {activeTriangle ? (
+      <div className="text-xs text-slate-400">
+        {activeTriangle.name}
+      </div>
+    ) : null}
+  </div>
+
+  <div className="mt-3 h-[280px] rounded-lg border border-white/10 bg-slate-950/70 p-2">
+    <Triangle2DView
+      triangle={activeTriangle}
+      savedLines={savedLines}
+    />
+  </div>
+</div>
 <div className="mt-4 rounded-xl border border-white/10 bg-black/15 p-3">
 <div className="mt-3 space-y-2">
   {savedTriangles.length === 0 ? (
@@ -1141,12 +1179,7 @@ setIsPinned(false);
         </div>
 
         {/* 👇ここ追加：2D展開 */}
-        <div className="mt-3 flex justify-center">
-          <Triangle2DView
-            triangle={triangle}
-            savedLines={savedLines}
-          />
-        </div>
+       
       </div>
     ))
   )}
