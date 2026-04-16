@@ -1,6 +1,7 @@
 "use client";
 
 import { Canvas } from "@react-three/fiber";
+import { TOUCH } from "three";
 import { OrbitControls, Line, Html } from "@react-three/drei";
 import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
@@ -768,16 +769,25 @@ function CameraRig({
   
  return (
   <OrbitControls
-    ref={controlsRef}
-    enableDamping={false}
-    enableRotate={viewMode !== "top"}
-    rotateSpeed={0.8}
-    zoomSpeed={1.15}
-    panSpeed={0.8}
-    screenSpacePanning={false}
-    minPolarAngle={0}
-    maxPolarAngle={viewMode === "top" ? Math.PI / 2 : Math.PI}
-  />
+  ref={controlsRef}
+  enableDamping={false}
+  rotateSpeed={0.8}
+  zoomSpeed={1.15}
+  panSpeed={0.8}
+  screenSpacePanning={false}
+  minPolarAngle={0}
+  maxPolarAngle={Math.PI}
+
+  touches={{
+  ONE: TOUCH.ROTATE,
+  TWO: TOUCH.DOLLY_PAN,
+}}
+  mouseButtons={{
+    LEFT: THREE.MOUSE.ROTATE,
+    MIDDLE: THREE.MOUSE.DOLLY,
+    RIGHT: THREE.MOUSE.PAN,
+  }}
+/>
 );
 }
 export default function PointCloudCanvas({
