@@ -376,7 +376,9 @@ function handlePick(point: PickedPoint) {
 }
 function createTriangleFromSelectedLines() {
   if (selectedLineIds.length !== 3) return;
-
+// 同じ線重複防止
+const uniqueIds = new Set(selectedLineIds);
+if (uniqueIds.size !== 3) return;
   const selectedLines = selectedLineIds
     .map((id) => savedLines.find((line) => line.id === id))
     .filter(Boolean) as SavedLine[];
@@ -389,11 +391,14 @@ function createTriangleFromSelectedLines() {
     selectedLines[2].surfaceLength,
   ];
 
-  const area = computeHeronArea(
-    edgeLengths[0],
-    edgeLengths[1],
-    edgeLengths[2],
-  );
+  // 🔥 ここに追加
+  const [a, b, c] = edgeLengths;
+  if (a + b <= c || b + c <= a || c + a <= b) {
+    alert("三角形が成立しません");
+    return;
+  }
+
+  const area = computeHeronArea(a, b, c);
 
   const triangleId = crypto.randomUUID();
   const triangleName = `三角形${savedTriangles.length + 1}`;
@@ -549,6 +554,8 @@ function handleHoverPoint(point: PickedPoint | null) {
     setStartPoint(null);
 setEndPoint(null);
 setSavedLines([]);
+setSavedTriangles([]);
+setSelectedLineIds([]);
 setIsPinned(false);
     setErrorMessage("");
     setFileName(file.name);
@@ -1084,9 +1091,15 @@ setIsPinned(false);
     <button
       type="button"
       onClick={() => {
-        setSavedLines((prev) => prev.filter((item) => item.id !== line.id));
-        setSelectedLineIds((prev) => prev.filter((id) => id !== line.id));
-      }}
+  setSavedLines((prev) => prev.filter((item) => item.id !== line.id));
+
+  setSelectedLineIds((prev) => prev.filter((id) => id !== line.id));
+
+  // 🔥 三角形も削除
+  setSavedTriangles((prev) =>
+    prev.filter((tri) => !tri.lineIds.includes(line.id))
+  );
+}}
       className="rounded border border-white/10 px-2 py-1 text-xs text-slate-300 hover:bg-white/10"
     >
       削除
