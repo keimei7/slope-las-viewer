@@ -292,58 +292,164 @@ samples.push({
 
   return samples;
 }
-function Triangle2DView({
-  triangle,
-  savedLines,
-}: {
-  triangle: SavedTriangle | null;
-  savedLines: SavedLine[];
-}) {
-  if (!triangle) {
-    return (
-      <div className="flex h-full items-center justify-center text-sm text-slate-400">
-        三角形を作成すると、ここに2D展開図が出ます。
-      </div>
-    );
-  }
+type DevPoint2D = {
+  x: number;
+  y: number;
+};
 
+function makePointKey(p: PickedPoint) {
+  return `${p.x.toFixed(3)}|${p.y.toFixed(3)}|${p.z.toFixed(3)}`;
+}
+
+function normalize3(v: Point3): Point3 {
+  const len = Math.sqrt(v.x * v.x + v.y * v.y + v.z * v.z) || 1;
+  return { x: v.x / len, y: v.y / len, z: v.z / len };
+}
+
+function sub3(a: Point3, b: Point3): Point3 {
+  return { x: a.x - b.x, y: a.y - b.y, z: a.z - b.z };
+}
+
+function dot3(a: Point3, b: Point3) {
+  return a.x * b.x + a.y * b.y + a.z * b.z;
+}
+
+function cross3(a: Point3, b: Point3): Point3 {
+  return {
+    x: a.y * b.z - a.z * b.y,
+    y: a.z * b.x - a.x * b.z,
+    z: a.x * b.y - a.y * b.x,
+  };
+}
+
+function getTriangleVerticesForSavedTriangle(
+  triangle: SavedTriangle,
+  savedLines: SavedLine[],
+) {
   const lines = triangle.lineIds
     .map((id) => savedLines.find((l) => l.id === id))
     .filter(Boolean) as SavedLine[];
 
-  const vertices = getTriangleVerticesFromLines(lines);
-  if (!vertices) {
+  return getTriangleVerticesFromLines(lines);
+}
+
+function buildDevelopmentProjection(
+  savedTriangles: SavedTriangle[],
+  savedLines: SavedLine[],
+) {
+  const triangleVertices = savedTriangles
+    .map((triangle) => ({
+      triangle,
+      vertices: getTriangleVerticesForSavedTriangle(triangle, savedLines),
+    }))
+    .filter(
+      (
+        item,
+      ): item is {
+        triangle: SavedTriangle;
+        vertices: [PickedPoint, PickedPoint, PickedPoint];
+      } => Array.isArray(item.vertices) && item.vertices.length === 3,
+    );
+
+  if (triangleVertices.length === 0) return null;
+
+  const [A, B, C] = triangleVertices[0].vertices;
+
+  const origin: Point3 = A;
+  const ex = normalize3(sub3(B, A));
+  const ac = sub3(C, A);
+
+  let normal = cross3(ex, ac);
+  const normalLen = Math.sqrt(
+    normal.x * normal.x + normal.y * normal.y + normal.z * normal.z,
+  );
+
+  if (normalLen < 1e-9) {
+    normal = { x: 0, y: 0, z: 1 };
+  } else {
+    normal = normalize3(normal);
+  }
+
+  const ey = normalize3(cross3(normal, ex));
+
+  const projectPoint = (p: PickedPoint): DevPoint2D => {
+    const v = sub3(p, origin);
+    return {
+      x: dot3(v, ex),
+      y: dot3(v, ey),
+    };
+  };
+
+  const projectedPointMap = new Map<string, DevPoint2D>();
+
+  for (const { vertices } of triangleVertices) {
+    for (const p of vertices) {
+      const key = makePointKey(p);
+      if (!projectedPointMap.has(key)) {
+        projectedPointMap.set(key, projectPoint(p));
+      }
+    }
+  }
+
+  const projectedTriangles = triangleVertices.map(({ triangle, vertices }) => ({
+    triangle,
+    points: vertices.map((p) => projectedPointMap.get(makePointKey(p))!) as [
+      DevPoint2D,
+      DevPoint2D,
+      DevPoint2D,
+    ],
+  }));
+
+  const allPoints = Array.from(projectedPointMap.values());
+  const minX = Math.min(...allPoints.map((p) => p.x));
+  const maxX = Math.max(...allPoints.map((p) => p.x));
+  const minY = Math.min(...allPoints.map((p) => p.y));
+  const maxY = Math.max(...allPoints.map((p) => p.y));
+
+  return {
+    projectedTriangles,
+    minX,
+    maxX,
+    minY,
+    maxY,
+  };
+}
+
+function DevelopmentPreview({
+  savedTriangles,
+  savedLines,
+  activeTriangleId,
+}: {
+  savedTriangles: SavedTriangle[];
+  savedLines: SavedLine[];
+  activeTriangleId: string | null;
+}) {
+  const dev = useMemo(
+    () => buildDevelopmentProjection(savedTriangles, savedLines),
+    [savedTriangles, savedLines],
+  );
+
+  if (!dev || dev.projectedTriangles.length === 0) {
     return (
       <div className="flex h-full items-center justify-center text-sm text-slate-400">
-        三角形の頂点を復元できませんでした。
+        三角形を作成すると、ここに展開図が出ます。
       </div>
     );
   }
 
-  const pts = projectTriangleTo2D(vertices[0], vertices[1], vertices[2]);
-
-  const minX = Math.min(...pts.map((p) => p.x));
-  const maxX = Math.max(...pts.map((p) => p.x));
-  const minY = Math.min(...pts.map((p) => p.y));
-  const maxY = Math.max(...pts.map((p) => p.y));
-
-  const pad = 24;
   const width = 520;
   const height = 280;
+  const pad = 24;
 
-  const spanX = Math.max(maxX - minX, 0.001);
-  const spanY = Math.max(maxY - minY, 0.001);
+  const spanX = Math.max(dev.maxX - dev.minX, 0.001);
+  const spanY = Math.max(dev.maxY - dev.minY, 0.001);
   const scale = Math.min(
     (width - pad * 2) / spanX,
     (height - pad * 2) / spanY,
   );
 
-  const tx = (x: number) => pad + (x - minX) * scale;
-  const ty = (y: number) => height - pad - (y - minY) * scale;
-
-  const A = pts[0];
-  const B = pts[1];
-  const C = pts[2];
+  const tx = (x: number) => pad + (x - dev.minX) * scale;
+  const ty = (y: number) => height - pad - (y - dev.minY) * scale;
 
   return (
     <svg
@@ -352,12 +458,20 @@ function Triangle2DView({
       preserveAspectRatio="xMidYMid meet"
     >
       <rect x="0" y="0" width={width} height={height} fill="#020617" />
-      <polygon
-        points={`${tx(A.x)},${ty(A.y)} ${tx(B.x)},${ty(B.y)} ${tx(C.x)},${ty(C.y)}`}
-        fill="rgba(34,211,238,0.18)"
-        stroke="#22d3ee"
-        strokeWidth="2"
-      />
+
+      {dev.projectedTriangles.map(({ triangle, points }) => {
+        const isActive = activeTriangleId === triangle.id;
+
+        return (
+          <polygon
+            key={triangle.id}
+            points={points.map((p) => `${tx(p.x)},${ty(p.y)}`).join(" ")}
+            fill={isActive ? "rgba(34,211,238,0.24)" : "rgba(34,211,238,0.12)"}
+            stroke={isActive ? "#67e8f9" : "#22d3ee"}
+            strokeWidth={isActive ? 2.5 : 1.6}
+          />
+        );
+      })}
     </svg>
   );
 }
@@ -1124,10 +1238,11 @@ setIsPinned(false);
   </div>
 
   <div className="mt-3 h-[280px] rounded-lg border border-white/10 bg-slate-950/70 p-2">
-    <Triangle2DView
-      triangle={activeTriangle}
-      savedLines={savedLines}
-    />
+    <DevelopmentPreview
+  savedTriangles={savedTriangles}
+  savedLines={savedLines}
+  activeTriangleId={activeTriangle?.id ?? null}
+/>
   </div>
 </div>
 <div className="mt-4 rounded-xl border border-white/10 bg-black/15 p-3">
