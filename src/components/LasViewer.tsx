@@ -458,7 +458,15 @@ function DevelopmentPreview({
       preserveAspectRatio="xMidYMid meet"
     >
       <rect x="0" y="0" width={width} height={height} fill="#020617" />
-
+<rect
+  x="2"
+  y="2"
+  width={width - 4}
+  height={height - 4}
+  fill="none"
+  stroke="#64748b"
+  strokeWidth="1"
+/>
       {dev.projectedTriangles.map(({ triangle, points }) => {
         const isActive = activeTriangleId === triangle.id;
 
@@ -503,10 +511,35 @@ function exportDevelopmentToDXF(
       const p1 = item.points[i];
       const p2 = item.points[(i + 1) % 3];
 
+      // 線
       dxf +=
         "0\nLINE\n8\n0\n" +
         `10\n${p1.x}\n20\n${p1.y}\n30\n0\n` +
         `11\n${p2.x}\n21\n${p2.y}\n31\n0\n`;
+
+      // 中点
+      const mx = (p1.x + p2.x) / 2;
+      const my = (p1.y + p2.y) / 2;
+
+      // 長さ
+      const dx = p2.x - p1.x;
+      const dy = p2.y - p1.y;
+      const len = Math.sqrt(dx * dx + dy * dy);
+
+      // ラベル文字（L1など）
+      const label = `${item.name}-${i + 1}`;
+
+      // TEXT（ラベル）
+      dxf +=
+        "0\nTEXT\n8\n0\n" +
+        `10\n${mx}\n20\n${my + 0.2}\n30\n0\n` +
+        `40\n0.2\n1\n${label}\n`;
+
+      // TEXT（寸法）
+      dxf +=
+        "0\nTEXT\n8\n0\n" +
+        `10\n${mx}\n20\n${my - 0.2}\n30\n0\n` +
+        `40\n0.2\n1\n${len.toFixed(3)}m\n`;
     }
   }
 
@@ -1314,41 +1347,51 @@ setIsPinned(false);
             <div className="flex-1 overflow-y-auto overscroll-contain p-4">
            <div className="rounded-xl border border-white/10 bg-black/15 p-3">
   <div className="flex items-center justify-between gap-3">
-  <div>
-    <div className="text-xs font-semibold uppercase tracking-wide text-cyan-100/80">
-      図面プレビュー
-    </div>
-    {activeTriangle ? (
-      <div className="mt-1 text-xs text-slate-400">
-        {activeTriangle.name}
+    <div>
+      <div className="text-xs font-semibold uppercase tracking-wide text-cyan-100/80">
+        図面プレビュー
       </div>
-    ) : null}
+      {activeTriangle ? (
+        <div className="mt-1 text-xs text-slate-400">
+          {activeTriangle.name}
+        </div>
+      ) : null}
+    </div>
+
+    <div className="flex items-center gap-2">
+      <button
+        type="button"
+        onClick={handlePrintDevelopment}
+        className="rounded border border-white/10 bg-white/5 px-2 py-1 text-xs text-slate-200 hover:bg-white/10"
+      >
+        印刷
+      </button>
+
+      <button
+        type="button"
+        onClick={() =>
+          exportDevelopmentToDXF(savedTriangles, savedLines)
+        }
+        disabled={savedTriangles.length === 0}
+        className="rounded border border-white/10 bg-white/5 px-2 py-1 text-xs text-slate-200 hover:bg-white/10 disabled:opacity-40"
+      >
+        DXF出力
+      </button>
+    </div>
   </div>
 
-  <div className="flex items-center gap-2">
-    <button
-      type="button"
-      onClick={handlePrintDevelopment}
-      className="rounded border border-white/10 bg-white/5 px-2 py-1 text-xs text-slate-200 hover:bg-white/10"
-    >
-      印刷
-    </button>
-    <button
-      type="button"
-      onClick={() => exportDevelopmentToDXF(savedTriangles, savedLines)}
-      disabled={savedTriangles.length === 0}
-      className="rounded border border-white/10 bg-white/5 px-2 py-1 text-xs text-slate-200 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
-    >
-      DXF出力
-    </button>
-  </div>
-</div>
   <div className="mt-3 h-[280px] rounded-lg border border-white/10 bg-slate-950/70 p-2">
     <DevelopmentPreview
-  savedTriangles={savedTriangles}
-  savedLines={savedLines}
-  activeTriangleId={activeTriangle?.id ?? null}
-/>
+      savedTriangles={savedTriangles}
+      savedLines={savedLines}
+      activeTriangleId={activeTriangle?.id ?? null}
+    />
+  </div>
+
+  {/* タイトル欄 */}
+  <div className="mt-2 text-xs text-slate-400 flex justify-between">
+    <div>案件: {fileName || "-"}</div>
+    <div>作成日: {new Date().toLocaleDateString()}</div>
   </div>
 </div>
 <div className="mt-4 rounded-xl border border-white/10 bg-black/15 p-3">

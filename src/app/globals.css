@@ -39,3 +39,19 @@ body {
     background: white !important;
   }
 }
+@media print {
+  body {
+    background: white !important;
+  }
+
+  aside,
+  button,
+  input {
+    display: none !important;
+  }
+
+  svg {
+    width: 180mm !important;
+    height: auto !important;
+  }
+}
