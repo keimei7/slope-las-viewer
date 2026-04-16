@@ -198,10 +198,13 @@ function computeTapeSamplePoints(
 
   const ux = dx / baseLen;
   const uy = dy / baseLen;
-const horizontalness = Math.abs(ux); 
+
   const samples: PickedPoint[] = [];
   const step = baseLen / divisionCount;
-  const alongWindow = Math.max(step * 0.5, searchRadius);
+
+  // UI上の searchRadius は m 前提で使う
+  // 探索帯を締めたいので along 側は step と searchRadius の中間くらいで制御
+  const alongWindow = Math.max(step * 0.35, searchRadius * 0.75);
 
   for (let i = 0; i <= divisionCount; i++) {
     const targetAlong = step * i;
@@ -209,13 +212,13 @@ const horizontalness = Math.abs(ux);
     const targetY = ay + uy * targetAlong;
     const targetZ = az + ((bz - az) * i) / divisionCount;
 
-  const candidates: Array<{
-  point: Point3;
-  alongError: number;
-  perpDist: number;
-  targetZError: number;
-  score: number;
-}> = [];
+    const candidates: Array<{
+      point: Point3;
+      alongError: number;
+      perpDist: number;
+      targetZError: number;
+      score: number;
+    }> = [];
 
     for (const p of sourcePoints) {
       const px = p.x - ax;
@@ -227,46 +230,91 @@ const horizontalness = Math.abs(ux);
       const perpDist = Math.sqrt(perpX * perpX + perpY * perpY);
       const alongError = Math.abs(along - targetAlong);
 
+      // 始終点の前後に広がりすぎない
       if (along < -searchRadius || along > baseLen + searchRadius) continue;
+
+      // 目標位置から離れすぎる点は切る
       if (alongError > alongWindow) continue;
-      if (perpDist > sliceWidth) continue;
+
+      // 横ブレを厳しく抑える
+      const maxPerp =
+        guideMode === "horizontal"
+          ? Math.min(sliceWidth * 0.45, searchRadius * 1.2)
+          : guideMode === "vertical"
+            ? Math.min(sliceWidth * 0.75, searchRadius * 1.8)
+            : Math.min(sliceWidth * 0.55, searchRadius * 1.35);
+
+      if (perpDist > maxPerp) continue;
 
       const targetZError = Math.abs(p.z - targetZ);
-const perpWeight =
-  guideMode === "angled" ? 0.82 : guideMode === "horizontal" ? 0.78 : 0.7;
 
-const score =
-  perpDist * perpWeight +
-  alongError * 0.12 +
-  targetZError * (1 - perpWeight - 0.12);
+      // 横ブレ優先で締める
+      const perpWeight =
+        guideMode === "horizontal"
+          ? 0.9
+          : guideMode === "angled"
+            ? 0.88
+            : 0.76;
 
-candidates.push({
-  point: p,
-  alongError,
-  perpDist,
-  targetZError,
-  score,
-});
+      const alongWeight = guideMode === "vertical" ? 0.1 : 0.08;
+      const zWeight = 1 - perpWeight - alongWeight;
+
+      const score =
+        perpDist * perpWeight +
+        alongError * alongWeight +
+        targetZError * zWeight;
+
+      candidates.push({
+        point: p,
+        alongError,
+        perpDist,
+        targetZError,
+        score,
+      });
     }
 
     if (candidates.length === 0) {
       let fallback: Point3 | null = null;
-      let bestDistSq = Number.POSITIVE_INFINITY;
+      let bestScore = Number.POSITIVE_INFINITY;
 
       for (const p of sourcePoints) {
         const ddx = p.x - targetX;
         const ddy = p.y - targetY;
-        const distSq = ddx * ddx + ddy * ddy;
-        if (distSq < bestDistSq && distSq <= sliceWidth * sliceWidth) {
+        const distXY = Math.sqrt(ddx * ddx + ddy * ddy);
+
+        // fallback も横ブレしすぎる点は拾わない
+        const maxFallbackDist =
+          guideMode === "horizontal"
+            ? sliceWidth * 0.7
+            : guideMode === "angled"
+              ? sliceWidth * 0.85
+              : sliceWidth;
+
+        if (distXY > maxFallbackDist) continue;
+
+        const dz = Math.abs(p.z - targetZ);
+        const fallbackScore = distXY * 0.85 + dz * 0.15;
+
+        if (fallbackScore < bestScore) {
           fallback = p;
-          bestDistSq = distSq;
+          bestScore = fallbackScore;
         }
       }
 
       if (fallback) {
+        let fallbackLockRatio = 0.5;
+
+        if (guideMode === "horizontal") {
+          fallbackLockRatio = 0.96;
+        } else if (guideMode === "vertical") {
+          fallbackLockRatio = 0.3;
+        } else if (guideMode === "angled") {
+          fallbackLockRatio = 0.82;
+        }
+
         samples.push({
-          x: fallback.x,
-          y: fallback.y,
+          x: targetX * fallbackLockRatio + fallback.x * (1 - fallbackLockRatio),
+          y: targetY * fallbackLockRatio + fallback.y * (1 - fallbackLockRatio),
           z: fallback.z,
         });
       } else {
@@ -280,60 +328,64 @@ candidates.push({
       continue;
     }
 
-   candidates.sort((a, b) => a.score - b.score);
-const top = candidates.slice(0, Math.min(candidates.length, 8));
+    candidates.sort((a, b) => a.score - b.score);
+    const top = candidates.slice(0, Math.min(candidates.length, 8));
 
-let chosen = top[0];
+    let chosen = top[0];
 
-if (top.length > 1) {
-  const prevSample = samples.length > 0 ? samples[samples.length - 1] : null;
-  const prevPrevSample = samples.length > 1 ? samples[samples.length - 2] : null;
+    if (top.length > 1) {
+      const prevSample =
+        samples.length > 0 ? samples[samples.length - 1] : null;
+      const prevPrevSample =
+        samples.length > 1 ? samples[samples.length - 2] : null;
 
-  let bestContinuityScore = Number.POSITIVE_INFINITY;
+      let bestContinuityScore = Number.POSITIVE_INFINITY;
 
-  for (const candidate of top) {
-    let continuityPenalty = 0;
+      for (const candidate of top) {
+        let continuityPenalty = 0;
 
-    if (prevSample) {
-      const dz = candidate.point.z - prevSample.z;
-      continuityPenalty += Math.abs(dz) * 2.0;
+        if (prevSample) {
+          const dz = candidate.point.z - prevSample.z;
+          continuityPenalty += Math.abs(dz) * 2.0;
 
-      const dx = candidate.point.x - prevSample.x;
-      const dy = candidate.point.y - prevSample.y;
-      const stepDist = Math.sqrt(dx * dx + dy * dy);
-      continuityPenalty += Math.abs(stepDist - step) * 0.8;
+          const ddx = candidate.point.x - prevSample.x;
+          const ddy = candidate.point.y - prevSample.y;
+          const stepDist = Math.sqrt(ddx * ddx + ddy * ddy);
+
+          continuityPenalty += Math.abs(stepDist - step) * 0.8;
+        }
+
+        if (prevSample && prevPrevSample) {
+          const prevDz = prevSample.z - prevPrevSample.z;
+          const currentDz = candidate.point.z - prevSample.z;
+          continuityPenalty += Math.abs(currentDz - prevDz) * 3.0;
+        }
+
+        const totalScore = candidate.score + continuityPenalty;
+
+        if (totalScore < bestContinuityScore) {
+          bestContinuityScore = totalScore;
+          chosen = candidate;
+        }
+      }
     }
 
-    if (prevSample && prevPrevSample) {
-      const prevDz = prevSample.z - prevPrevSample.z;
-      const currentDz = candidate.point.z - prevSample.z;
-      continuityPenalty += Math.abs(currentDz - prevDz) * 3.0;
+    // 水平ほど張る、垂直ほど実点寄り、斜めは横ブレしない程度に直線寄り
+    let lockRatio = 0.55;
+
+    if (guideMode === "horizontal") {
+      lockRatio = 0.96;
+    } else if (guideMode === "vertical") {
+      lockRatio = 0.32;
+    } else if (guideMode === "angled") {
+      lockRatio = 0.84;
     }
 
-    const totalScore = candidate.score + continuityPenalty;
-
-    if (totalScore < bestContinuityScore) {
-      bestContinuityScore = totalScore;
-      chosen = candidate;
-    }
-  }
-}
-
-let lockRatio = 0.45;
-
-if (guideMode === "horizontal") {
-  lockRatio = 0.92;
-} else if (guideMode === "vertical") {
-  lockRatio = 0.25;
-} else if (guideMode === "angled") {
-  lockRatio = 0.72;
-}
-
-samples.push({
-  x: targetX * lockRatio + chosen.point.x * (1 - lockRatio),
-  y: targetY * lockRatio + chosen.point.y * (1 - lockRatio),
-  z: chosen.point.z,
-});
+    samples.push({
+      x: targetX * lockRatio + chosen.point.x * (1 - lockRatio),
+      y: targetY * lockRatio + chosen.point.y * (1 - lockRatio),
+      z: chosen.point.z,
+    });
   }
 
   return samples;
@@ -736,7 +788,15 @@ const tapePoints = useMemo(() => {
     sliceWidth,
     guideMode,
   );
-}, [points, startPoint, endPoint, divisionCount, searchRadius, sliceWidth, guideMode]);
+}, [
+  points,
+  startPoint,
+  endPoint,
+  divisionCount,
+  searchRadius,
+  sliceWidth,
+  guideMode,
+]);
   const tapeDistance = useMemo(() => {
     if (tapePoints.length < 2) return null;
 
