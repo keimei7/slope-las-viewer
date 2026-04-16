@@ -12,3 +12,30 @@ body {
   overflow: hidden;
   font-family: Arial, Helvetica, sans-serif;
 }
+@media print {
+  body {
+    background: white !important;
+  }
+
+  aside,
+  button,
+  input {
+    display: none !important;
+  }
+
+  section {
+    position: static !important;
+    width: 100% !important;
+    height: auto !important;
+    border: none !important;
+    background: white !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+  }
+
+  svg {
+    width: 100% !important;
+    height: auto !important;
+    background: white !important;
+  }
+}

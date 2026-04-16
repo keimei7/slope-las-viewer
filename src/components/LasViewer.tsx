@@ -475,6 +475,57 @@ function DevelopmentPreview({
     </svg>
   );
 }
+function buildDevelopmentExportData(
+  savedTriangles: SavedTriangle[],
+  savedLines: SavedLine[],
+) {
+  const dev = buildDevelopmentProjection(savedTriangles, savedLines);
+  if (!dev || dev.projectedTriangles.length === 0) return null;
+
+  return dev.projectedTriangles.map(({ triangle, points }) => ({
+    id: triangle.id,
+    name: triangle.name,
+    points,
+  }));
+}
+
+function exportDevelopmentToDXF(
+  savedTriangles: SavedTriangle[],
+  savedLines: SavedLine[],
+) {
+  const items = buildDevelopmentExportData(savedTriangles, savedLines);
+  if (!items || items.length === 0) return;
+
+  let dxf = "0\nSECTION\n2\nENTITIES\n";
+
+  for (const item of items) {
+    for (let i = 0; i < 3; i++) {
+      const p1 = item.points[i];
+      const p2 = item.points[(i + 1) % 3];
+
+      dxf +=
+        "0\nLINE\n8\n0\n" +
+        `10\n${p1.x}\n20\n${p1.y}\n30\n0\n` +
+        `11\n${p2.x}\n21\n${p2.y}\n31\n0\n`;
+    }
+  }
+
+  dxf += "0\nENDSEC\n0\nEOF\n";
+
+  const blob = new Blob([dxf], { type: "application/dxf" });
+  const url = URL.createObjectURL(blob);
+
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "development-preview.dxf";
+  a.click();
+
+  URL.revokeObjectURL(url);
+}
+
+function handlePrintDevelopment() {
+  window.print();
+}
 export default function LasViewer() {
   const [points, setPoints] = useState<Point3[]>([]);
   const [fileName, setFileName] = useState("");
@@ -1263,16 +1314,35 @@ setIsPinned(false);
             <div className="flex-1 overflow-y-auto overscroll-contain p-4">
            <div className="rounded-xl border border-white/10 bg-black/15 p-3">
   <div className="flex items-center justify-between gap-3">
+  <div>
     <div className="text-xs font-semibold uppercase tracking-wide text-cyan-100/80">
       図面プレビュー
     </div>
     {activeTriangle ? (
-      <div className="text-xs text-slate-400">
+      <div className="mt-1 text-xs text-slate-400">
         {activeTriangle.name}
       </div>
     ) : null}
   </div>
 
+  <div className="flex items-center gap-2">
+    <button
+      type="button"
+      onClick={handlePrintDevelopment}
+      className="rounded border border-white/10 bg-white/5 px-2 py-1 text-xs text-slate-200 hover:bg-white/10"
+    >
+      印刷
+    </button>
+    <button
+      type="button"
+      onClick={() => exportDevelopmentToDXF(savedTriangles, savedLines)}
+      disabled={savedTriangles.length === 0}
+      className="rounded border border-white/10 bg-white/5 px-2 py-1 text-xs text-slate-200 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
+    >
+      DXF出力
+    </button>
+  </div>
+</div>
   <div className="mt-3 h-[280px] rounded-lg border border-white/10 bg-slate-950/70 p-2">
     <DevelopmentPreview
   savedTriangles={savedTriangles}
