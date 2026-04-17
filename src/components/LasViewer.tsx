@@ -1944,20 +1944,7 @@ setHoverSnapPoint(null);
   <div className="text-xs font-semibold uppercase tracking-wide text-cyan-100/80">
     保存線一覧
   </div>
-  <div className="mt-4 flex items-center justify-between gap-2">
-  <div className="text-xs text-slate-400">
-    選択中: {selectedLineIds.length} / 3
-  </div>
-  <button
-    type="button"
-    disabled={selectedLineIds.length !== 3}
-    onClick={createTriangleFromSelectedLines}
-    className="rounded border border-white/10 bg-white/5 px-2 py-1 text-xs text-slate-200 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
-  >
-    三角形を作成
-  </button>
-</div>
-
+  
 <div className="mt-3 space-y-2">
   {savedLines.length === 0 ? (
     <div className="text-sm text-slate-400">
@@ -2036,6 +2023,19 @@ setHoverSnapPoint(null);
       );
     })
   )}
+  <div className="mt-4 flex items-center justify-between gap-2 border-t border-white/10 pt-3">
+  <div className="text-xs text-slate-400">
+    選択中: {selectedLineIds.length} / 3
+  </div>
+  <button
+    type="button"
+    disabled={selectedLineIds.length !== 3}
+    onClick={createTriangleFromSelectedLines}
+ className="rounded bg-cyan-400/20 border border-cyan-400/40 px-3 py-1 text-xs text-cyan-100 hover:bg-cyan-400/30 disabled:opacity-30"
+   >
+    三角形を作成
+  </button>
+</div>
 </div>
 </div>
             </div>
