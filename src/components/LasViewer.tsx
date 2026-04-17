@@ -1112,6 +1112,7 @@ export default function LasViewer() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [status, setStatus] = useState<LoadState>("idle");
   const [errorMessage, setErrorMessage] = useState("");
+const [cameraLift, setCameraLift] = useState(0.35);
 
   const [startPoint, setStartPoint] = useState<PickedPoint | null>(null);
   const [endPoint, setEndPoint] = useState<PickedPoint | null>(null);
@@ -1561,6 +1562,7 @@ setIsPinned(false);
   rotateSpeed={rotateSpeed}
   zoomSpeed={zoomSpeed}
   panSpeed={panSpeed}
+  cameraLift={cameraLift}
 />
 {points.length === 0 ? (
   <button
@@ -1933,6 +1935,20 @@ max={1.2}
 step={0.02}
     value={panSpeed}
     onChange={(e) => setPanSpeed(Number(e.target.value))}
+    className="mt-1 w-full"
+  />
+</div>
+<div className="mt-3">
+  <label className="block text-xs text-slate-300">
+    カメラ高さ: {(cameraLift * 100).toFixed(0)}%
+  </label>
+  <input
+    type="range"
+    min={0}
+    max={1}
+    step={0.01}
+    value={cameraLift}
+    onChange={(e) => setCameraLift(Number(e.target.value))}
     className="mt-1 w-full"
   />
 </div>

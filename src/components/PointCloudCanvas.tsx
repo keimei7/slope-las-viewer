@@ -825,6 +825,7 @@ function CameraRig({
   rotateSpeed,
   zoomSpeed,
   panSpeed,
+  cameraLift, // ←これ追加
 }: {
   points: Point3[];
   zScale: number;
@@ -833,32 +834,42 @@ function CameraRig({
   rotateSpeed: number;
   zoomSpeed: number;
   panSpeed: number;
+  cameraLift: number;
 }) {
   const controlsRef = useRef<any>(null);
   const bounds = useMemo(() => computeBounds(points), [points]);
   const maxSpan = Math.max(bounds.sx, bounds.sy, bounds.sz * zScale, 1);
+const zRange = bounds.maxZ - bounds.minZ;
+
+// 👇 カメラが見る高さ（0=地面 / 1=上）
+const worldTargetZ = bounds.minZ + zRange * cameraLift;
+
+// 👇 Canvas座標系に変換（中心補正＋Zスケール）
+const targetZ = (worldTargetZ - bounds.cz) * zScale;
 
   useEffect(() => {
-    const controls = controlsRef.current;
-    if (!controls || points.length === 0) return;
+  const controls = controlsRef.current;
+  if (!controls || points.length === 0) return;
 
-    const camera = controls.object;
+  const camera = controls.object;
 
-    camera.up.set(0, 0, 1);
+  camera.up.set(0, 0, 1);
 
-    if (viewMode === "top") {
-      camera.position.set(0, 0, maxSpan * 1.8);
-    } else {
-      camera.position.set(
-        maxSpan * 1.0,
-        -maxSpan * 1.0,
-        maxSpan * 0.75,
-      );
-    }
+  // 👇 ここが一番重要（視点の中心）
+ controls.target.set(0, 0, targetZ);
 
-    controls.target.set(0, 0, 0);
-    controls.update();
-  }, [points, maxSpan, viewMode, viewResetKey]);
+if (viewMode === "top") {
+  camera.position.set(0, 0, maxSpan * 1.8 + targetZ);
+} else {
+  camera.position.set(
+    maxSpan * 1.0,
+    -maxSpan * 1.0,
+    targetZ + maxSpan * 0.75
+  );
+}
+
+  controls.update();
+}, [points, maxSpan, targetZ, viewMode, viewResetKey]);
 
   return (
     <OrbitControls
@@ -915,6 +926,7 @@ export default function PointCloudCanvas({
   tapePoints,
   savedLines,
   savedTriangles,
+  cameraLift: number;
 }: {
   selectedLineIds: string[];
   lineWidthScale: number;
@@ -946,6 +958,16 @@ export default function PointCloudCanvas({
   savedTriangles: SavedTriangle[];
 }) {
   const bounds = useMemo(() => computeBounds(points), [points]);
+  const maxSpan = Math.max(bounds.sx, bounds.sy, bounds.sz * zScale, 1);
+
+// Z範囲
+const zRange = bounds.maxZ - bounds.minZ;
+
+// カメラが見る高さ（0=地面 / 1=上）
+const worldTargetZ = bounds.minZ + zRange * cameraLift;
+
+// three座標系に変換
+const targetZ = (worldTargetZ - bounds.cz) * zScale;
   const gridSize = useMemo(
     () => Math.max(bounds.sx, bounds.sy, 200) * 2.5,
     [bounds],
@@ -1085,6 +1107,8 @@ export default function PointCloudCanvas({
   rotateSpeed={rotateSpeed}
   zoomSpeed={zoomSpeed}
   panSpeed={panSpeed}
+    cameraLift={cameraLift}
+
 />
       </Canvas>
     </main>
