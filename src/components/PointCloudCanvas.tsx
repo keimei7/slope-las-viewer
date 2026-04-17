@@ -164,6 +164,8 @@ function PointCloud({
   endPoint,
   focusWidth,
   sliceWidth,
+  reliefColorEnabled,
+  reliefStrength,
 }: {
   points: Point3[];
   zScale: number;
@@ -174,6 +176,8 @@ function PointCloud({
   endPoint: PickedPoint | null;
   focusWidth: number;
   sliceWidth: number;
+  reliefColorEnabled: boolean;
+  reliefStrength: number;
 }) {
   const bounds = useMemo(() => computeBounds(points), [points]);
 
@@ -1098,6 +1102,7 @@ export default function PointCloudCanvas({
   onHoverSavedLine: (lineId: string | null) => void;
   onHoverTriangle: (triangleId: string | null) => void;
   savedTriangles: SavedTriangle[];
+  
 }) {
   const bounds = useMemo(() => computeBounds(points), [points]);
   const maxSpan = Math.max(bounds.sx, bounds.sy, bounds.sz * zScale, 1);
@@ -1140,20 +1145,19 @@ const targetZ = (worldTargetZ - bounds.cz) * zScale;
           args={[gridSize, 40, "#1e293b", "#0f172a"]}
           rotation={[Math.PI / 2, 0, 0]}
         />
-
-        <PointCloud
-          points={points}
-          zScale={zScale}
-          pointSize={pointSize}
-          onPick={onPickPoint}
-          onHover={onHoverPoint}
-          startPoint={startPoint}
-          endPoint={endPoint}
-          focusWidth={focusWidth}
-          sliceWidth={sliceWidth}
-            reliefColorEnabled={reliefColorEnabled}
+<PointCloud
+  points={points}
+  zScale={zScale}
+  pointSize={pointSize}
+  onPick={onPickPoint}
+  onHover={onHoverPoint}
+  startPoint={startPoint}
+  endPoint={endPoint}
+  focusWidth={focusWidth}
+  sliceWidth={sliceWidth}
+  reliefColorEnabled={reliefColorEnabled}
   reliefStrength={reliefStrength}
-        />
+/>
 
         {startPoint ? (
           <Marker
