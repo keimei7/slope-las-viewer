@@ -1058,6 +1058,9 @@ export default function PointCloudCanvas({
   rotateSpeed,
   zoomSpeed,
   panSpeed,
+  cameraLift,
+  reliefColorEnabled,
+  reliefStrength,
   zScale,
   pointSize,
   viewMode,
@@ -1067,7 +1070,6 @@ export default function PointCloudCanvas({
   tapePoints,
   savedLines,
   savedTriangles,
-  cameraLift,
   onResetMeasuredPoints,
 }: {
   reliefColorEnabled: boolean;
