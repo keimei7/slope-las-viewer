@@ -266,6 +266,17 @@ function computeTapeSamplePoints(
 
       // 断面幅は 1cm 固定で、横ブレを厳しく制限
       if (perpDist > sliceWidth) continue;
+      if (samples.length > 0) {
+  const prev = samples[samples.length - 1];
+  const jumpDx = p.x - prev.x;
+  const jumpDy = p.y - prev.y;
+  const jumpDz = p.z - prev.z;
+  const jumpDist = Math.sqrt(
+    jumpDx * jumpDx + jumpDy * jumpDy + jumpDz * jumpDz
+  );
+
+  if (jumpDist > Math.max(step * 1.8, searchRadius * 1.5)) continue;
+}
 
       const targetZError = Math.abs(p.z - targetZ);
 
@@ -353,34 +364,57 @@ function computeTapeSamplePoints(
 
     let chosen = top[0];
 
-    if (top.length > 1) {
-      const prevSample =
-        samples.length > 0 ? samples[samples.length - 1] : null;
-      const prevPrevSample =
-        samples.length > 1 ? samples[samples.length - 2] : null;
+if (top.length > 1) {
+  const prevSample =
+    samples.length > 0 ? samples[samples.length - 1] : null;
+  const prevPrevSample =
+    samples.length > 1 ? samples[samples.length - 2] : null;
 
-      let bestContinuityScore = Number.POSITIVE_INFINITY;
+  let bestContinuityScore = Number.POSITIVE_INFINITY;
 
-      for (const candidate of top) {
-        let continuityPenalty = 0;
+  for (const candidate of top) {
+    let continuityPenalty = 0;
 
-        if (prevSample) {
-          const dz = candidate.point.z - prevSample.z;
-          continuityPenalty += Math.abs(dz) * 2.0;
+    if (prevSample) {
+      const dz = candidate.point.z - prevSample.z;
+      continuityPenalty += Math.abs(dz) * 2.0;
 
-          const ddx = candidate.point.x - prevSample.x;
-          const ddy = candidate.point.y - prevSample.y;
-          const stepDist = Math.sqrt(ddx * ddx + ddy * ddy);
-          continuityPenalty += Math.abs(stepDist - step) * 0.8;
-        }
+      const ddx = candidate.point.x - prevSample.x;
+      const ddy = candidate.point.y - prevSample.y;
+      const stepDist = Math.sqrt(ddx * ddx + ddy * ddy);
+      continuityPenalty += Math.abs(stepDist - step) * 0.8;
+    }
 
-        if (prevSample && prevPrevSample) {
-          const prevDz = prevSample.z - prevPrevSample.z;
-          const currentDz = candidate.point.z - prevSample.z;
-          continuityPenalty += Math.abs(currentDz - prevDz) * 3.0;
-        }
+    if (prevSample && prevPrevSample) {
+      const prevDx = prevSample.x - prevPrevSample.x;
+      const prevDy = prevSample.y - prevPrevSample.y;
+      const prevDz = prevSample.z - prevPrevSample.z;
 
-        const totalScore = candidate.score + continuityPenalty;
+      const curDx = candidate.point.x - prevSample.x;
+      const curDy = candidate.point.y - prevSample.y;
+      const curDz = candidate.point.z - prevSample.z;
+
+      const prevLen = Math.sqrt(prevDx * prevDx + prevDy * prevDy + prevDz * prevDz);
+      const curLen = Math.sqrt(curDx * curDx + curDy * curDy + curDz * curDz);
+
+      if (prevLen > 0 && curLen > 0) {
+        const cos =
+          (prevDx * curDx + prevDy * curDy + prevDz * curDz) /
+          (prevLen * curLen);
+
+        const clamped = Math.max(-1, Math.min(1, cos));
+        const bendDeg = (Math.acos(clamped) * 180) / Math.PI;
+
+        // 急折れは裏面・貫通っぽさが出やすいので強めに罰する
+        continuityPenalty += Math.max(0, bendDeg - 28) * 0.22;
+      }
+
+      const prevZStep = prevSample.z - prevPrevSample.z;
+      const currentZStep = candidate.point.z - prevSample.z;
+      continuityPenalty += Math.abs(currentZStep - prevZStep) * 3.2;
+    }
+
+    const totalScore = candidate.score + continuityPenalty;
 
         if (totalScore < bestContinuityScore) {
           bestContinuityScore = totalScore;
@@ -955,6 +989,59 @@ function buildDevelopmentProjection(
     maxY,
   };
 }
+function angleDeg2D(a: FlatPoint2D, b: FlatPoint2D, c: FlatPoint2D) {
+  const v1x = a.x - b.x;
+  const v1y = a.y - b.y;
+  const v2x = c.x - b.x;
+  const v2y = c.y - b.y;
+
+  const len1 = Math.sqrt(v1x * v1x + v1y * v1y);
+  const len2 = Math.sqrt(v2x * v2x + v2y * v2y);
+  if (len1 === 0 || len2 === 0) return 0;
+
+  const cos =
+    (v1x * v2x + v1y * v2y) / (len1 * len2);
+
+  const clamped = Math.max(-1, Math.min(1, cos));
+  return (Math.acos(clamped) * 180) / Math.PI;
+}
+
+function buildRightAngleMark(
+  a: FlatPoint2D,
+  b: FlatPoint2D,
+  c: FlatPoint2D,
+  size: number,
+) {
+  const bax = a.x - b.x;
+  const bay = a.y - b.y;
+  const bcx = c.x - b.x;
+  const bcy = c.y - b.y;
+
+  const lenBA = Math.sqrt(bax * bax + bay * bay) || 1;
+  const lenBC = Math.sqrt(bcx * bcx + bcy * bcy) || 1;
+
+  const u1x = bax / lenBA;
+  const u1y = bay / lenBA;
+  const u2x = bcx / lenBC;
+  const u2y = bcy / lenBC;
+
+  const p1 = {
+    x: b.x + u1x * size,
+    y: b.y + u1y * size,
+  };
+
+  const p3 = {
+    x: b.x + u2x * size,
+    y: b.y + u2y * size,
+  };
+
+  const p2 = {
+    x: p1.x + u2x * size,
+    y: p1.y + u2y * size,
+  };
+
+  return [p1, p2, p3] as const;
+}
 function DevelopmentPreview({
   savedTriangles,
   activeTriangleId,
@@ -1019,33 +1106,47 @@ function DevelopmentPreview({
           />
         );
       })}
+{dev.triangles.map((tri) => {
+  const isActive = activeTriangleId === tri.id;
 
-      {dev.edges.map((edge) => {
-        const mx = (edge.p1.x + edge.p2.x) / 2;
-        const my = (edge.p1.y + edge.p2.y) / 2;
+  const [p0, p1, p2] = tri.points;
+  const angles = [
+    angleDeg2D(p2, p0, p1),
+    angleDeg2D(p0, p1, p2),
+    angleDeg2D(p1, p2, p0),
+  ];
 
-        const dx = edge.p2.x - edge.p1.x;
-        const dy = edge.p2.y - edge.p1.y;
-        let angleDeg = (Math.atan2(-dy, dx) * 180) / Math.PI;
-        if (angleDeg > 90 || angleDeg < -90) {
-          angleDeg += 180;
-        }
+  const rightIndex = angles.findIndex((deg) => Math.abs(deg - 90) <= 2.5);
 
-        return (
-          <text
-            key={edge.lineId}
-            x={tx(mx)}
-            y={ty(my)}
-            fontSize="8"
-            fill="#e2e8f0"
-            textAnchor="middle"
-            dominantBaseline="middle"
-            transform={`rotate(${angleDeg}, ${tx(mx)}, ${ty(my)})`}
-          >
-            {edge.lineName} / {edge.length.toFixed(2)}m
-          </text>
-        );
-      })}
+  let rightMark: readonly FlatPoint2D[] | null = null;
+  if (rightIndex === 0) {
+    rightMark = buildRightAngleMark(p2, p0, p1, 0.25);
+  } else if (rightIndex === 1) {
+    rightMark = buildRightAngleMark(p0, p1, p2, 0.25);
+  } else if (rightIndex === 2) {
+    rightMark = buildRightAngleMark(p1, p2, p0, 0.25);
+  }
+
+  return (
+    <g key={tri.id}>
+      <polygon
+        points={tri.points.map((p) => `${tx(p.x)},${ty(p.y)}`).join(" ")}
+        fill={isActive ? "rgba(34,211,238,0.24)" : "rgba(34,211,238,0.16)"}
+        stroke={isActive ? "#67e8f9" : "#22d3ee"}
+        strokeWidth={isActive ? 2.2 : 1.4}
+      />
+
+      {rightMark ? (
+        <polyline
+          points={rightMark.map((p) => `${tx(p.x)},${ty(p.y)}`).join(" ")}
+          fill="none"
+          stroke={isActive ? "#facc15" : "#e2e8f0"}
+          strokeWidth={1.4}
+        />
+      ) : null}
+    </g>
+  );
+})}
     </svg>
   );
 }
