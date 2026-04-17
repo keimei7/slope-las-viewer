@@ -1130,7 +1130,7 @@ const [hitThreshold, setHitThreshold] = useState(0.05);
   const [focusWidth, setFocusWidth] = useState(6);
 
   const [divisionCount, setDivisionCount] = useState(8);
-const [searchRadius, setSearchRadius] = useState(0.01); // 1cm
+const [searchRadius, setSearchRadius] = useState(0.02); // ←デフォ2cmにちょい上げ（おすすめ）
 const sliceWidth = 0.01; // 1cm固定
   const [isPinned, setIsPinned] = useState(false);
 
@@ -1144,10 +1144,9 @@ const [selectedLineIds, setSelectedLineIds] = useState<string[]>([]);
 const [savedTriangles, setSavedTriangles] = useState<SavedTriangle[]>([]);
 const [hoverLineId, setHoverLineId] = useState<string | null>(null);
 const [hoverTriangleId, setHoverTriangleId] = useState<string | null>(null);
-const [rotateSpeed, setRotateSpeed] = useState(0.8);
-const [zoomSpeed, setZoomSpeed] = useState(1.15);
-const [panSpeed, setPanSpeed] = useState(0.8);
-
+const [rotateSpeed, setRotateSpeed] = useState(0.5);  // ↓ゆっくり回る
+const [zoomSpeed, setZoomSpeed] = useState(0.7);      // ↓ズーム暴れ防止
+const [panSpeed, setPanSpeed] = useState(0.5);        // ↓移動も落ち着く
 const isSamePoint = (a: PickedPoint, b: PickedPoint, eps = 0.001) => {
   return (
     Math.abs(a.x - b.x) < eps &&
@@ -1742,9 +1741,9 @@ setHoverSnapPoint(null);
   </label>
   <input
     type="range"
-    min={0}
-    max={0.05}
-    step={0.001}
+   min={0}
+max={0.10}   // ←10cmまで
+step={0.002} // ←少し鈍く（2mm刻み）
     value={searchRadius}
     onChange={(e) =>
       setSearchRadius(clamp(Number(e.target.value), 0, 0.05))
@@ -1900,8 +1899,8 @@ setHoverSnapPoint(null);
   <input
     type="range"
     min={0.2}
-    max={2.5}
-    step={0.05}
+max={1.2}   // ←上限カット
+step={0.02} // ←微調整しやすく
     value={rotateSpeed}
     onChange={(e) => setRotateSpeed(Number(e.target.value))}
     className="mt-1 w-full"
@@ -1914,9 +1913,9 @@ setHoverSnapPoint(null);
   </label>
   <input
     type="range"
-    min={0.2}
-    max={3}
-    step={0.05}
+   min={0.3}
+max={1.5}
+step={0.03}
     value={zoomSpeed}
     onChange={(e) => setZoomSpeed(Number(e.target.value))}
     className="mt-1 w-full"
@@ -1929,9 +1928,9 @@ setHoverSnapPoint(null);
   </label>
   <input
     type="range"
-    min={0.2}
-    max={2.5}
-    step={0.05}
+   min={0.2}
+max={1.2}
+step={0.02}
     value={panSpeed}
     onChange={(e) => setPanSpeed(Number(e.target.value))}
     className="mt-1 w-full"
