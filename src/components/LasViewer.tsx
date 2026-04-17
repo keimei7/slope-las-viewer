@@ -1122,8 +1122,8 @@ const [guideAngleDeg, setGuideAngleDeg] = useState<number | null>(null);
 
   const [maxDisplayPoints, setMaxDisplayPoints] = useState(600000);
   const [zScale, setZScale] = useState(1);
-  const [pointSize, setPointSize] = useState(0.008);
-const [lineWidthScale, setLineWidthScale] = useState(1);
+ const [pointSize, setPointSize] = useState(0.016);
+const [lineWidthScale, setLineWidthScale] = useState(2);
 const [hitThreshold, setHitThreshold] = useState(0.05);
 
   const [viewMode, setViewMode] = useState<ViewMode>("top");
@@ -1534,6 +1534,7 @@ setIsPinned(false);
   return (
     <div className="relative h-screen w-screen overflow-hidden bg-slate-950 text-slate-100">
   <PointCloudCanvas
+  onResetMeasuredPoints={resetMeasuredPointsOnly}
   points={displayPoints}
   startPoint={startPoint}
   endPoint={endPoint}
@@ -1572,6 +1573,17 @@ setIsPinned(false);
     aria-label="点群ファイルを開く"
     title="クリックして点群ファイルを開く"
   />
+) : null}
+{points.length > 0 ? (
+  <div className="absolute bottom-4 left-1/2 z-[6] -translate-x-1/2">
+    <button
+      type="button"
+      onClick={resetMeasuredPointsOnly}
+      className="rounded-xl border border-white/10 bg-slate-900/75 px-4 py-2 text-sm text-slate-100 shadow-xl backdrop-blur-md hover:bg-slate-800/85"
+    >
+      測点リセット
+    </button>
+  </div>
 ) : null}
       {!leftCollapsed ? (
         <aside
@@ -1812,13 +1824,13 @@ step={0.002} // ←少し鈍く（2mm刻み）
     </label>
     <input
       type="range"
-      min={0.001}
-      max={0.05}
-      step={0.001}
-      value={pointSize}
-      onChange={(e) =>
-        setPointSize(clamp(Number(e.target.value), 0.001, 0.05))
-      }
+      min={0.002}
+max={0.1}
+step={0.002}
+value={pointSize}
+onChange={(e) =>
+  setPointSize(clamp(Number(e.target.value), 0.002, 0.1))
+}
       className="mt-1 w-full"
     />
   </div>
@@ -1833,13 +1845,13 @@ step={0.002} // ←少し鈍く（2mm刻み）
     </label>
     <input
       type="range"
-      min={0.002}
-      max={0.03}
-      step={0.001}
-      value={pointSize}
-      onChange={(e) =>
-        setPointSize(clamp(Number(e.target.value), 0.002, 0.03))
-      }
+     min={0.004}
+max={0.06}
+step={0.002}
+value={pointSize}
+onChange={(e) =>
+  setPointSize(clamp(Number(e.target.value), 0.004, 0.06))
+}
       className="mt-1 w-full"
     />
   </div>
@@ -1850,13 +1862,13 @@ step={0.002} // ←少し鈍く（2mm刻み）
     </label>
     <input
       type="range"
-      min={0.6}
-      max={2.5}
-      step={0.1}
-      value={lineWidthScale}
-      onChange={(e) =>
-        setLineWidthScale(clamp(Number(e.target.value), 0.6, 2.5))
-      }
+     min={1.2}
+max={5}
+step={0.2}
+value={lineWidthScale}
+onChange={(e) =>
+  setLineWidthScale(clamp(Number(e.target.value), 1.2, 5))
+}
       className="mt-1 w-full"
     />
   </div>

@@ -305,7 +305,7 @@ function Marker({
         (point.z - bounds.cz) * zScale,
       ]}
     >
-      <sphereGeometry args={[0.05, 10, 10]} />
+    <sphereGeometry args={[0.1, 12, 12]} />
       <meshBasicMaterial color={color} />
     </mesh>
   );
@@ -339,7 +339,7 @@ function PickLine({
         ],
       ]}
       color="#38bdf8"
-      lineWidth={0.9 * lineWidthScale}
+      lineWidth={1.8 * lineWidthScale}
     />
   );
 }
@@ -365,7 +365,7 @@ function TapeLine({
         (p.z - bounds.cz) * zScale,
       ])}
       color="#f59e0b"
-      lineWidth={1.2 * lineWidthScale}
+      lineWidth={2.4 * lineWidthScale}
     />
   );
 }
@@ -628,12 +628,34 @@ function HoverSnapMarker({
         (point.z - bounds.cz) * zScale,
       ]}
     >
-      <sphereGeometry args={[0.06, 12, 12]} />
+     <sphereGeometry args={[0.12, 14, 14]} />
       <meshBasicMaterial color="#eab308" />
     </mesh>
   );
 }
+function FloatingResetButton({
+  visible,
+  onReset,
+}: {
+  visible: boolean;
+  onReset: () => void;
+}) {
+  if (!visible) return null;
 
+  return (
+    <Html position={[0, 0, 0]} fullscreen style={{ pointerEvents: "none" }}>
+      <div className="absolute bottom-6 left-1/2 -translate-x-1/2">
+        <button
+          type="button"
+          onClick={onReset}
+          className="pointer-events-auto rounded-full border border-white/15 bg-slate-900/80 px-4 py-2 text-sm text-slate-100 shadow-lg backdrop-blur hover:bg-slate-800/90"
+        >
+          測点リセット
+        </button>
+      </div>
+    </Html>
+  );
+}
 function GuidePreviewLine({
   startPoint,
   hoverPoint,
@@ -927,6 +949,7 @@ export default function PointCloudCanvas({
   savedLines,
   savedTriangles,
   cameraLift,
+  onResetMeasuredPoints,
 }: {
   
   selectedLineIds: string[];
@@ -954,6 +977,7 @@ export default function PointCloudCanvas({
   focusWidth: number;
   sliceWidth: number;
   tapePoints: PickedPoint[];
+  onResetMeasuredPoints: () => void;
   savedLines: SavedLine[];
   onHoverSavedLine: (lineId: string | null) => void;
   onHoverTriangle: (triangleId: string | null) => void;
