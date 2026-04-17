@@ -1014,7 +1014,41 @@ const targetZ = (worldTargetZ - bounds.cz) * zScale;
     e.preventDefault(); // 右クリックメニュー潰す
     onResetMeasuredPoints();
   }}
+    onPointerDown={(e) => {
+    // 左＋右同時押し検知
+    if (e.buttons === 3) {
+      setIsDualZoom(true);
+      lastYRef.current = e.clientY;
+    }
+  }}
+
+  onPointerUp={() => {
+    setIsDualZoom(false);
+    lastYRef.current = null;
+  }}
+
+  onPointerMove={(e) => {
+    if (!isDualZoom || lastYRef.current === null) return;
+
+    const dy = e.clientY - lastYRef.current;
+    lastYRef.current = e.clientY;
+
+    const controls = controlsRef.current;
+    if (!controls) return;
+
+    const camera = controls.object;
+
+    // 👇 ズーム量（調整ポイント）
+    const zoomFactor = 1 + dy * 0.01;
+
+    camera.position.sub(controls.target);
+    camera.position.multiplyScalar(zoomFactor);
+    camera.position.add(controls.target);
+
+    controls.update();
+  }}
 >
+  
         <ambientLight intensity={0.65} />
         <directionalLight position={[200, -100, 300]} intensity={0.55} />
 
