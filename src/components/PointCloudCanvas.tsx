@@ -825,7 +825,7 @@ function CameraRig({
   rotateSpeed,
   zoomSpeed,
   panSpeed,
-  cameraLift, // ←これ追加
+  cameraLift,
 }: {
   points: Point3[];
   zScale: number;
@@ -926,14 +926,16 @@ export default function PointCloudCanvas({
   tapePoints,
   savedLines,
   savedTriangles,
-  cameraLift: number;
+  cameraLift,
 }: {
+  
   selectedLineIds: string[];
   lineWidthScale: number;
   hitThreshold: number;
   rotateSpeed: number;
   zoomSpeed: number;
   panSpeed: number;
+  cameraLift: number;
   points: Point3[];
   startPoint: PickedPoint | null;
   endPoint: PickedPoint | null;
@@ -1099,7 +1101,7 @@ const targetZ = (worldTargetZ - bounds.cz) * zScale;
           />
         ))}
 
-        <CameraRig
+       <CameraRig
   points={points}
   zScale={zScale}
   viewMode={viewMode}
@@ -1107,8 +1109,7 @@ const targetZ = (worldTargetZ - bounds.cz) * zScale;
   rotateSpeed={rotateSpeed}
   zoomSpeed={zoomSpeed}
   panSpeed={panSpeed}
-    cameraLift={cameraLift}
-
+  cameraLift={cameraLift}
 />
       </Canvas>
     </main>
