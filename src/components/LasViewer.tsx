@@ -1208,7 +1208,8 @@ function handlePrintDevelopment() {
   window.print();
 }
 export default function LasViewer() {
-  
+  const [reliefColorEnabled, setReliefColorEnabled] = useState(true);
+const [reliefStrength, setReliefStrength] = useState(0.6);
   const [points, setPoints] = useState<Point3[]>([]);
   const [fileName, setFileName] = useState("");
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -1666,6 +1667,8 @@ setIsPinned(false);
   zoomSpeed={zoomSpeed}
   panSpeed={panSpeed}
   cameraLift={cameraLift}
+   reliefColorEnabled={reliefColorEnabled}
+  reliefStrength={reliefStrength}
 />
 {points.length === 0 ? (
   <button
@@ -1885,6 +1888,37 @@ step={0.002} // ←少し鈍く（2mm刻み）
   <div className="text-xs font-semibold uppercase tracking-wide text-cyan-100/80">
     表示設定
   </div>
+  <div className="mt-4 rounded-xl border border-white/10 bg-black/15 p-3">
+  <div className="text-xs font-semibold uppercase tracking-wide text-cyan-100/80">
+    起伏カラー
+  </div>
+
+  <div className="mt-3 flex items-center justify-between">
+    <span className="text-xs text-slate-300">ON/OFF</span>
+    <button
+      type="button"
+      onClick={() => setReliefColorEnabled((v) => !v)}
+      className="rounded border border-white/10 px-2 py-1 text-xs bg-white/5 hover:bg-white/10"
+    >
+      {reliefColorEnabled ? "ON" : "OFF"}
+    </button>
+  </div>
+
+  <div className="mt-3">
+    <label className="block text-xs text-slate-300">
+      強調度: {(reliefStrength * 100).toFixed(0)}%
+    </label>
+    <input
+      type="range"
+      min={0}
+      max={1}
+      step={0.05}
+      value={reliefStrength}
+      onChange={(e) => setReliefStrength(Number(e.target.value))}
+      className="mt-1 w-full"
+    />
+  </div>
+</div>
 
   <div className="mt-3">
     <label className="block text-xs text-slate-300">

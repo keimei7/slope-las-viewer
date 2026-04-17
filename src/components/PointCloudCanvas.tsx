@@ -190,10 +190,28 @@ function PointCloud({
       positions[i * 3] = p.x - bounds.cx;
       positions[i * 3 + 1] = p.y - bounds.cy;
       positions[i * 3 + 2] = (p.z - bounds.cz) * zScale;
+let r = 0.76;
+let gCol = 0.82;
+let b = 0.9;
 
-      let r = 0.76;
-      let gCol = 0.82;
-      let b = 0.9;
+if (reliefColorEnabled) {
+  const zMin = bounds.minZ;
+  const zMax = bounds.maxZ;
+  const zRange = Math.max(zMax - zMin, 0.0001);
+
+  const t = (p.z - zMin) / zRange;
+
+  // コントラスト調整
+  const tAdj = Math.pow(t, 1 - reliefStrength * 0.7);
+
+  // 低→赤 / 高→白
+  const low = { r: 0.5, g: 0.1, b: 0.1 };
+  const high = { r: 0.95, g: 0.97, b: 1.0 };
+
+  r = low.r + (high.r - low.r) * tAdj;
+  gCol = low.g + (high.g - low.g) * tAdj;
+  b = low.b + (high.b - low.b) * tAdj;
+}
 
       if (useLine && startPoint && endPoint) {
         const { distance } = pointToSegmentMetrics2D(
@@ -1048,7 +1066,8 @@ export default function PointCloudCanvas({
   cameraLift,
   onResetMeasuredPoints,
 }: {
-  
+  reliefColorEnabled: boolean;
+  reliefStrength: number;
   selectedLineIds: string[];
   lineWidthScale: number;
   hitThreshold: number;
@@ -1132,6 +1151,8 @@ const targetZ = (worldTargetZ - bounds.cz) * zScale;
           endPoint={endPoint}
           focusWidth={focusWidth}
           sliceWidth={sliceWidth}
+            reliefColorEnabled={reliefColorEnabled}
+  reliefStrength={reliefStrength}
         />
 
         {startPoint ? (
