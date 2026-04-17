@@ -910,6 +910,9 @@ const [selectedLineIds, setSelectedLineIds] = useState<string[]>([]);
 const [savedTriangles, setSavedTriangles] = useState<SavedTriangle[]>([]);
 const [hoverLineId, setHoverLineId] = useState<string | null>(null);
 const [hoverTriangleId, setHoverTriangleId] = useState<string | null>(null);
+const [rotateSpeed, setRotateSpeed] = useState(0.8);
+const [zoomSpeed, setZoomSpeed] = useState(1.15);
+const [panSpeed, setPanSpeed] = useState(0.8);
 
 const isSamePoint = (a: PickedPoint, b: PickedPoint, eps = 0.001) => {
   return (
@@ -1296,7 +1299,7 @@ setIsPinned(false);
 
   return (
     <div className="relative h-screen w-screen overflow-hidden bg-slate-950 text-slate-100">
-   <PointCloudCanvas
+  <PointCloudCanvas
   points={displayPoints}
   startPoint={startPoint}
   endPoint={endPoint}
@@ -1321,7 +1324,10 @@ setIsPinned(false);
   savedTriangles={savedTriangles}
   selectedLineIds={selectedLineIds}
   lineWidthScale={lineWidthScale}
-hitThreshold={hitThreshold}
+  hitThreshold={hitThreshold}
+  rotateSpeed={rotateSpeed}
+  zoomSpeed={zoomSpeed}
+  panSpeed={panSpeed}
 />
 {points.length === 0 ? (
   <button
@@ -1653,6 +1659,50 @@ setHoverSnapPoint(null);
       className="mt-1 w-full"
     />
   </div>
+ <div className="mt-3">
+  <label className="block text-xs text-slate-300">
+    回転感度: {rotateSpeed.toFixed(2)}
+  </label>
+  <input
+    type="range"
+    min={0.2}
+    max={2.5}
+    step={0.05}
+    value={rotateSpeed}
+    onChange={(e) => setRotateSpeed(Number(e.target.value))}
+    className="mt-1 w-full"
+  />
+</div>
+
+<div className="mt-3">
+  <label className="block text-xs text-slate-300">
+    ズーム感度: {zoomSpeed.toFixed(2)}
+  </label>
+  <input
+    type="range"
+    min={0.2}
+    max={3}
+    step={0.05}
+    value={zoomSpeed}
+    onChange={(e) => setZoomSpeed(Number(e.target.value))}
+    className="mt-1 w-full"
+  />
+</div>
+
+<div className="mt-3">
+  <label className="block text-xs text-slate-300">
+    パン感度: {panSpeed.toFixed(2)}
+  </label>
+  <input
+    type="range"
+    min={0.2}
+    max={2.5}
+    step={0.05}
+    value={panSpeed}
+    onChange={(e) => setPanSpeed(Number(e.target.value))}
+    className="mt-1 w-full"
+  />
+</div>
 
               <div className="mt-4 flex flex-wrap gap-2">
                 <button

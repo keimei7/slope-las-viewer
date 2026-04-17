@@ -822,11 +822,17 @@ function CameraRig({
   zScale,
   viewMode,
   viewResetKey,
+  rotateSpeed,
+  zoomSpeed,
+  panSpeed,
 }: {
   points: Point3[];
   zScale: number;
   viewMode: ViewMode;
   viewResetKey: number;
+  rotateSpeed: number;
+  zoomSpeed: number;
+  panSpeed: number;
 }) {
   const controlsRef = useRef<any>(null);
   const bounds = useMemo(() => computeBounds(points), [points]);
@@ -855,25 +861,25 @@ function CameraRig({
   }, [points, bounds, zScale, viewMode, viewResetKey]);
 
   return (
-    <OrbitControls
-      ref={controlsRef}
-      enableDamping={false}
-      rotateSpeed={0.8}
-      zoomSpeed={1.15}
-      panSpeed={0.8}
-      screenSpacePanning={false}
-      minPolarAngle={0}
-      maxPolarAngle={Math.PI}
-      touches={{
-        ONE: TOUCH.ROTATE,
-        TWO: TOUCH.DOLLY_PAN,
-      }}
-      mouseButtons={{
-        LEFT: THREE.MOUSE.ROTATE,
-        MIDDLE: THREE.MOUSE.DOLLY,
-        RIGHT: THREE.MOUSE.PAN,
-      }}
-    />
+  <OrbitControls
+  ref={controlsRef}
+  enableDamping={false}
+  rotateSpeed={rotateSpeed}
+  zoomSpeed={zoomSpeed}
+  panSpeed={panSpeed}
+  screenSpacePanning={false}
+  minPolarAngle={0}
+  maxPolarAngle={Math.PI}
+  touches={{
+    ONE: TOUCH.ROTATE,
+    TWO: TOUCH.DOLLY_PAN,
+  }}
+  mouseButtons={{
+    LEFT: THREE.MOUSE.ROTATE,
+    MIDDLE: THREE.MOUSE.DOLLY,
+    RIGHT: THREE.MOUSE.PAN,
+  }}
+/>
   );
 }
 
@@ -894,6 +900,9 @@ export default function PointCloudCanvas({
   selectedLineIds,
   lineWidthScale,
   hitThreshold,
+  rotateSpeed,
+  zoomSpeed,
+  panSpeed,
   zScale,
   pointSize,
   viewMode,
@@ -907,6 +916,9 @@ export default function PointCloudCanvas({
   selectedLineIds: string[];
   lineWidthScale: number;
   hitThreshold: number;
+  rotateSpeed: number;
+  zoomSpeed: number;
+  panSpeed: number;
   points: Point3[];
   startPoint: PickedPoint | null;
   endPoint: PickedPoint | null;
@@ -1063,11 +1075,14 @@ export default function PointCloudCanvas({
         ))}
 
         <CameraRig
-          points={points}
-          zScale={zScale}
-          viewMode={viewMode}
-          viewResetKey={viewResetKey}
-        />
+  points={points}
+  zScale={zScale}
+  viewMode={viewMode}
+  viewResetKey={viewResetKey}
+  rotateSpeed={rotateSpeed}
+  zoomSpeed={zoomSpeed}
+  panSpeed={panSpeed}
+/>
       </Canvas>
     </main>
   );
