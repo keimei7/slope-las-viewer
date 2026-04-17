@@ -859,12 +859,83 @@ function CameraRig({
   cameraLift: number;
 }) {
   const controlsRef = useRef<any>(null);
+  const dualZoomActiveRef = useRef(false);
+const lastYRef = useRef<number | null>(null);
   const bounds = useMemo(() => computeBounds(points), [points]);
   const maxSpan = Math.max(bounds.sx, bounds.sy, bounds.sz * zScale, 1);
 const zRange = bounds.maxZ - bounds.minZ;
 
 // 👇 カメラが見る高さ（0=地面 / 1=上）
 const worldTargetZ = bounds.minZ + zRange * cameraLift;
+useEffect(() => {
+  const controls = controlsRef.current;
+  if (!controls) return;
+
+  const dom = controls.domElement;
+
+  const onPointerDown = (e: PointerEvent) => {
+    if (e.buttons === 3) {
+      dualZoomActiveRef.current = true;
+      lastYRef.current = e.clientY;
+      e.preventDefault();
+    }
+  };
+
+  const onPointerMove = (e: PointerEvent) => {
+    if (!dualZoomActiveRef.current || lastYRef.current === null) return;
+
+    const dy = e.clientY - lastYRef.current;
+    lastYRef.current = e.clientY;
+
+    const camera = controls.object as THREE.PerspectiveCamera;
+
+    const offset = new THREE.Vector3().copy(camera.position).sub(controls.target);
+
+    // dy > 0 で引く、dy < 0 で寄る
+    const zoomScale = Math.exp(dy * 0.003);
+
+    offset.multiplyScalar(zoomScale);
+
+    const minDist = Math.max(maxSpan * 0.02, 2);
+    const maxDist = Math.max(maxSpan * 20, 500);
+
+    const dist = offset.length();
+    if (dist < minDist) {
+      offset.setLength(minDist);
+    } else if (dist > maxDist) {
+      offset.setLength(maxDist);
+    }
+
+    camera.position.copy(new THREE.Vector3().copy(controls.target).add(offset));
+    controls.update();
+
+    e.preventDefault();
+  };
+
+  const onPointerUp = () => {
+    dualZoomActiveRef.current = false;
+    lastYRef.current = null;
+  };
+
+  const onContextMenu = (e: MouseEvent) => {
+    // 左右同時押しズーム中だけ右クリックメニューを抑止
+    if (dualZoomActiveRef.current) {
+      e.preventDefault();
+    }
+  };
+
+  dom.addEventListener("pointerdown", onPointerDown);
+  dom.addEventListener("pointermove", onPointerMove);
+  window.addEventListener("pointerup", onPointerUp);
+  dom.addEventListener("contextmenu", onContextMenu);
+
+  return () => {
+    dom.removeEventListener("pointerdown", onPointerDown);
+    dom.removeEventListener("pointermove", onPointerMove);
+    window.removeEventListener("pointerup", onPointerUp);
+    dom.removeEventListener("contextmenu", onContextMenu);
+  };
+}, [maxSpan]);
 
 // 👇 Canvas座標系に変換（中心補正＋Zスケール）
 const targetZ = (worldTargetZ - bounds.cz) * zScale;
@@ -913,8 +984,8 @@ if (viewMode === "top") {
       }}
    mouseButtons={{
   LEFT: THREE.MOUSE.ROTATE,
-  MIDDLE: THREE.MOUSE.DOLLY,
-  RIGHT: undefined, // ←使わない
+  MIDDLE: THREE.MOUSE.PAN,
+  RIGHT: undefined as any,
 }}
     />
   );
@@ -1014,41 +1085,9 @@ const targetZ = (worldTargetZ - bounds.cz) * zScale;
     e.preventDefault(); // 右クリックメニュー潰す
     onResetMeasuredPoints();
   }}
-    onPointerDown={(e) => {
-    // 左＋右同時押し検知
-    if (e.buttons === 3) {
-      setIsDualZoom(true);
-      lastYRef.current = e.clientY;
-    }
-  }}
-
-  onPointerUp={() => {
-    setIsDualZoom(false);
-    lastYRef.current = null;
-  }}
-
-  onPointerMove={(e) => {
-    if (!isDualZoom || lastYRef.current === null) return;
-
-    const dy = e.clientY - lastYRef.current;
-    lastYRef.current = e.clientY;
-
-    const controls = controlsRef.current;
-    if (!controls) return;
-
-    const camera = controls.object;
-
-    // 👇 ズーム量（調整ポイント）
-    const zoomFactor = 1 + dy * 0.01;
-
-    camera.position.sub(controls.target);
-    camera.position.multiplyScalar(zoomFactor);
-    camera.position.add(controls.target);
-
-    controls.update();
-  }}
->
   
+  
+>
         <ambientLight intensity={0.65} />
         <directionalLight position={[200, -100, 300]} intensity={0.55} />
 
