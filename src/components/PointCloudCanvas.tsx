@@ -838,6 +838,25 @@ function CameraRig({
   const bounds = useMemo(() => computeBounds(points), [points]);
 
   useEffect(() => {
+  const controls = controlsRef.current;
+  if (!controls) return;
+
+  const onWheel = (e: WheelEvent) => {
+    // 🔥ズーム暴走カット
+    if (Math.abs(e.deltaY) > 40) {
+      e.preventDefault();
+    }
+  };
+
+  const el = controls.domElement;
+  el.addEventListener("wheel", onWheel, { passive: false });
+
+  return () => {
+    el.removeEventListener("wheel", onWheel);
+  };
+}, []);
+
+  useEffect(() => {
     const controls = controlsRef.current;
     if (!controls || points.length === 0) return;
 
@@ -863,11 +882,15 @@ function CameraRig({
   return (
   <OrbitControls
   ref={controlsRef}
-  enableDamping={false}
+  enableDamping={true}
+dampingFactor={0.08}
   rotateSpeed={rotateSpeed}
-  zoomSpeed={zoomSpeed}
+  zoomSpeed={0.45}
   panSpeed={panSpeed}
   screenSpacePanning={false}
+  minDistance={2}      // ←これ超重要（寄りすぎ防止）
+maxDistance={5000} // ←遠すぎ防止
+zoomToCursor={true}
   minPolarAngle={0}
   maxPolarAngle={Math.PI}
   touches={{
