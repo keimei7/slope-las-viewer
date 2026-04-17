@@ -166,6 +166,7 @@ function PointCloud({
   sliceWidth,
   reliefColorEnabled,
   reliefStrength,
+  reliefSteps,
 }: {
   points: Point3[];
   zScale: number;
@@ -178,6 +179,7 @@ function PointCloud({
   sliceWidth: number;
   reliefColorEnabled: boolean;
   reliefStrength: number;
+  reliefSteps: number;
 }) {
   const bounds = useMemo(() => computeBounds(points), [points]);
 
@@ -198,52 +200,69 @@ let r = 0.76;
 let gCol = 0.82;
 let b = 0.9;
 
-if (reliefColorEnabled) {
-  const zMin = bounds.minZ;
-  const zMax = bounds.maxZ;
-  const zRange = Math.max(zMax - zMin, 0.0001);
+// ===== 等高線カラー =====
+const zMin = bounds.minZ;
+const zMax = bounds.maxZ;
+const zRange = Math.max(zMax - zMin, 0.0001);
 
-  const t = (p.z - zMin) / zRange;
+let t = (p.z - zMin) / zRange;
 
-  // コントラスト調整
-  const tAdj = Math.pow(t, 1 - reliefStrength * 0.7);
-
-  // 低→赤 / 高→白
-  const low = { r: 0.5, g: 0.1, b: 0.1 };
-  const high = { r: 0.95, g: 0.97, b: 1.0 };
-
-  r = low.r + (high.r - low.r) * tAdj;
-  gCol = low.g + (high.g - low.g) * tAdj;
-  b = low.b + (high.b - low.b) * tAdj;
+if (reliefSteps > 0) {
+  const step = 1 / reliefSteps;
+  t = Math.floor(t / step) * step;
 }
 
-      if (useLine && startPoint && endPoint) {
-        const { distance } = pointToSegmentMetrics2D(
-          p.x,
-          p.y,
-          startPoint.x,
-          startPoint.y,
-          endPoint.x,
-          endPoint.y,
-        );
+const getTopoColor = (tt: number) => {
+  if (tt < 0.2) return { r: 0.2, g: 0.3, b: 0.8 };
+  if (tt < 0.4) return { r: 0.2, g: 0.7, b: 0.3 };
+  if (tt < 0.6) return { r: 0.9, g: 0.8, b: 0.3 };
+  if (tt < 0.8) return { r: 0.8, g: 0.4, b: 0.2 };
+  return { r: 1.0, g: 1.0, b: 1.0 };
+};
 
-        const withinSlice = distance <= sliceWidth;
-        const withinFocus = distance <= focusWidth;
+const col = getTopoColor(t);
+r = col.r;
+gCol = col.g;
+b = col.b;
 
-        if (withinSlice) {
-          r = 1.0;
-          gCol = 0.78;
-          b = 0.35;
-        } else if (withinFocus) {
-          r = 0.92;
-          gCol = 0.96;
-          b = 1.0;
-        } else {
-          r = 0.2;
-          gCol = 0.24;
-          b = 0.31;
-        }
-      }
+if (reliefSteps > 0) {
+  const scaled = t * reliefSteps;
+  const edge = Math.abs(scaled - Math.round(scaled));
+
+  if (edge < 0.06) {
+    r *= 0.25;
+    gCol *= 0.25;
+    b *= 0.25;
+  }
+}
+
+if (useLine && startPoint && endPoint) {
+  const { distance } = pointToSegmentMetrics2D(
+    p.x,
+    p.y,
+    startPoint.x,
+    startPoint.y,
+    endPoint.x,
+    endPoint.y,
+  );
+
+  const withinSlice = distance <= sliceWidth;
+  const withinFocus = distance <= focusWidth;
+
+  if (withinSlice) {
+    r = 1.0;
+    gCol = 0.78;
+    b = 0.35;
+  } else if (withinFocus) {
+    r = 0.92;
+    gCol = 0.96;
+    b = 1.0;
+  } else {
+    r = 0.2;
+    gCol = 0.24;
+    b = 0.31;
+  }
+}
 
       colors[i * 3] = r;
       colors[i * 3 + 1] = gCol;
@@ -254,7 +273,7 @@ if (reliefColorEnabled) {
     g.setAttribute("color", new THREE.BufferAttribute(colors, 3));
     g.computeBoundingSphere();
     return g;
-  }, [points, bounds, zScale, startPoint, endPoint, focusWidth, sliceWidth]);
+}, [points, bounds, zScale, startPoint, endPoint, focusWidth, sliceWidth, reliefSteps]);
 
   return (
     <points
@@ -1071,7 +1090,9 @@ export default function PointCloudCanvas({
   savedLines,
   savedTriangles,
   onResetMeasuredPoints,
+  reliefSteps,
 }: {
+  reliefSteps: number;
   reliefColorEnabled: boolean;
   reliefStrength: number;
   selectedLineIds: string[];
@@ -1148,6 +1169,7 @@ const targetZ = (worldTargetZ - bounds.cz) * zScale;
           rotation={[Math.PI / 2, 0, 0]}
         />
 <PointCloud
+reliefSteps={reliefSteps}
   points={points}
   zScale={zScale}
   pointSize={pointSize}
