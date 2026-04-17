@@ -1107,6 +1107,7 @@ function handlePrintDevelopment() {
   window.print();
 }
 export default function LasViewer() {
+  
   const [points, setPoints] = useState<Point3[]>([]);
   const [fileName, setFileName] = useState("");
   const fileInputRef = useRef<HTMLInputElement | null>(null);
