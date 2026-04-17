@@ -693,6 +693,18 @@ function GuidePreviewLine({
   }
 
  const isVerticalGuide = guideMode === "vertical";
+const isHorizontalGuide = guideMode === "horizontal";
+
+const color = isVerticalGuide
+  ? "#22d3ee"
+  : isHorizontalGuide
+  ? "#facc15"
+  : "#fb7185";
+
+const width = (isVerticalGuide || isHorizontalGuide ? 1.2 : 0.8) * lineWidthScale;
+
+const dashSize = isVerticalGuide || isHorizontalGuide ? 0.05 : 0.08;
+const gapSize = isVerticalGuide || isHorizontalGuide ? 0.03 : 0.05;
 
 return (
   <Line
@@ -708,11 +720,11 @@ return (
         (hoverPoint.z - bounds.cz) * zScale,
       ],
     ]}
-    color={isVerticalGuide ? "#22d3ee" : "#fb7185"}
-    lineWidth={(isVerticalGuide ? 1.2 : 0.8) * lineWidthScale}
+    color={color}
+    lineWidth={width}
     dashed
-    dashSize={isVerticalGuide ? 0.05 : 0.08}
-    gapSize={isVerticalGuide ? 0.03 : 0.05}
+    dashSize={dashSize}
+    gapSize={gapSize}
   />
 );
 }
@@ -776,12 +788,20 @@ function SliceGuide({
 
   if (!guidePoints) return null;
 
- const isVerticalGuide = guideMode === "vertical";
-const guideColor = isVerticalGuide ? "#22d3ee" : "#f59e0b";
-const guideWidth = (isVerticalGuide ? 1.0 : 0.7) * lineWidthScale;
-const dashSize = isVerticalGuide ? 0.04 : 0.08;
-const gapSize = isVerticalGuide ? 0.025 : 0.05;
+const isVerticalGuide = guideMode === "vertical";
+const isHorizontalGuide = guideMode === "horizontal";
 
+const guideColor = isVerticalGuide
+  ? "#22d3ee"
+  : isHorizontalGuide
+  ? "#facc15"
+  : "#f59e0b";
+
+const guideWidth =
+  (isVerticalGuide || isHorizontalGuide ? 1.0 : 0.7) * lineWidthScale;
+
+const dashSize = isVerticalGuide || isHorizontalGuide ? 0.04 : 0.08;
+const gapSize = isVerticalGuide || isHorizontalGuide ? 0.025 : 0.05;
 return (
   <>
     <Line
@@ -1143,7 +1163,7 @@ const targetZ = (worldTargetZ - bounds.cz) * zScale;
         ) : null}
 
         {startPoint && !endPoint && hoverSnapPoint ? (
-          <SliceGuide
+        <SliceGuide
   startPoint={startPoint}
   endPoint={hoverSnapPoint}
   bounds={bounds}
