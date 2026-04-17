@@ -911,11 +911,11 @@ if (viewMode === "top") {
         ONE: TOUCH.ROTATE,
         TWO: TOUCH.DOLLY_PAN,
       }}
-      mouseButtons={{
-        LEFT: THREE.MOUSE.ROTATE,
-        MIDDLE: THREE.MOUSE.DOLLY,
-        RIGHT: THREE.MOUSE.PAN,
-      }}
+   mouseButtons={{
+  LEFT: THREE.MOUSE.ROTATE,
+  MIDDLE: THREE.MOUSE.DOLLY,
+  RIGHT: undefined, // ←使わない
+}}
     />
   );
 }
@@ -1001,14 +1001,20 @@ const targetZ = (worldTargetZ - bounds.cz) * zScale;
 
   return (
     <main className="absolute inset-0">
-      <Canvas
-        className="h-full w-full"
-        camera={{ position: [0, 0, 200], fov: 40, near: 0.1, far: 200000 }}
-        onCreated={({ gl, raycaster }) => {
-          gl.setClearColor("#020617");
-          raycaster.params.Points = { threshold: hitThreshold };
-        }}
-      >
+     <Canvas
+  className="h-full w-full"
+  camera={{ position: [0, 0, 200], fov: 40, near: 0.1, far: 200000 }}
+  onCreated={({ gl, raycaster }) => {
+    gl.setClearColor("#020617");
+    raycaster.params.Points = { threshold: hitThreshold };
+  }}
+
+  // 👇 これ追加
+  onContextMenu={(e) => {
+    e.preventDefault(); // 右クリックメニュー潰す
+    onResetMeasuredPoints();
+  }}
+>
         <ambientLight intensity={0.65} />
         <directionalLight position={[200, -100, 300]} intensity={0.55} />
 
