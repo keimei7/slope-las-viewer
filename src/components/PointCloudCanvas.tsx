@@ -692,27 +692,29 @@ function GuidePreviewLine({
     previewY = startPoint.y + Math.sin(angleRad) * len;
   }
 
-  return (
-    <Line
-      points={[
-        [
-          startPoint.x - bounds.cx,
-          startPoint.y - bounds.cy,
-          (startPoint.z - bounds.cz) * zScale,
-        ],
-        [
-          previewX - bounds.cx,
-          previewY - bounds.cy,
-          (hoverPoint.z - bounds.cz) * zScale,
-        ],
-      ]}
-      color="#fb7185"
-      lineWidth={0.8 * lineWidthScale}
-      dashed
-      dashSize={0.08}
-      gapSize={0.05}
-    />
-  );
+ const isVerticalGuide = guideMode === "vertical";
+
+return (
+  <Line
+    points={[
+      [
+        startPoint.x - bounds.cx,
+        startPoint.y - bounds.cy,
+        (startPoint.z - bounds.cz) * zScale,
+      ],
+      [
+        previewX - bounds.cx,
+        previewY - bounds.cy,
+        (hoverPoint.z - bounds.cz) * zScale,
+      ],
+    ]}
+    color={isVerticalGuide ? "#22d3ee" : "#fb7185"}
+    lineWidth={(isVerticalGuide ? 1.2 : 0.8) * lineWidthScale}
+    dashed
+    dashSize={isVerticalGuide ? 0.05 : 0.08}
+    gapSize={isVerticalGuide ? 0.03 : 0.05}
+  />
+);
 }
 
 function SliceGuide({
@@ -722,6 +724,7 @@ function SliceGuide({
   zScale,
   sliceWidth,
   lineWidthScale,
+  guideMode,
 }: {
   startPoint: PickedPoint;
   endPoint: PickedPoint;
@@ -729,6 +732,7 @@ function SliceGuide({
   zScale: number;
   sliceWidth: number;
   lineWidthScale: number;
+  guideMode: "horizontal" | "vertical" | "angled" | "free";
 }) {
   const guidePoints = useMemo(() => {
     const dx = endPoint.x - startPoint.x;
@@ -772,22 +776,32 @@ function SliceGuide({
 
   if (!guidePoints) return null;
 
-  return (
-    <>
-      <Line
-        points={guidePoints.left}
-        color="#f59e0b"
-        lineWidth={0.7 * lineWidthScale}
-        dashed
-      />
-      <Line
-        points={guidePoints.right}
-        color="#f59e0b"
-        lineWidth={0.7 * lineWidthScale}
-        dashed
-      />
-    </>
-  );
+ const isVerticalGuide = guideMode === "vertical";
+const guideColor = isVerticalGuide ? "#22d3ee" : "#f59e0b";
+const guideWidth = (isVerticalGuide ? 1.0 : 0.7) * lineWidthScale;
+const dashSize = isVerticalGuide ? 0.04 : 0.08;
+const gapSize = isVerticalGuide ? 0.025 : 0.05;
+
+return (
+  <>
+    <Line
+      points={guidePoints.left}
+      color={guideColor}
+      lineWidth={guideWidth}
+      dashed
+      dashSize={dashSize}
+      gapSize={gapSize}
+    />
+    <Line
+      points={guidePoints.right}
+      color={guideColor}
+      lineWidth={guideWidth}
+      dashed
+      dashSize={dashSize}
+      gapSize={gapSize}
+    />
+  </>
+);
 }
 
 function TriangleMesh({
@@ -1130,13 +1144,14 @@ const targetZ = (worldTargetZ - bounds.cz) * zScale;
 
         {startPoint && !endPoint && hoverSnapPoint ? (
           <SliceGuide
-            startPoint={startPoint}
-            endPoint={hoverSnapPoint}
-            bounds={bounds}
-            zScale={zScale}
-            sliceWidth={sliceWidth}
-            lineWidthScale={lineWidthScale}
-          />
+  startPoint={startPoint}
+  endPoint={hoverSnapPoint}
+  bounds={bounds}
+  zScale={zScale}
+  sliceWidth={sliceWidth}
+  lineWidthScale={lineWidthScale}
+  guideMode={guideMode}
+/>
         ) : null}
 
         <HoverSnapMarker point={hoverSnapPoint} bounds={bounds} zScale={zScale} />
