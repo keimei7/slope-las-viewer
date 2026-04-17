@@ -37,6 +37,36 @@ type SavedTriangle = {
   edgeLengths: [number, number, number];
   area: number;
 };
+type FlatPoint2D = {
+  x: number;
+  y: number;
+};
+
+type ConnectedFlatTriangle = {
+  id: string;
+  name: string;
+  lineIds: [string, string, string];
+  lineNames: [string, string, string];
+  edgeLengths: [number, number, number];
+  points: [FlatPoint2D, FlatPoint2D, FlatPoint2D];
+};
+
+type ConnectedFlatEdge = {
+  lineId: string;
+  lineName: string;
+  length: number;
+  p1: FlatPoint2D;
+  p2: FlatPoint2D;
+};
+
+type ConnectedFlatDevelopment = {
+  triangles: ConnectedFlatTriangle[];
+  edges: ConnectedFlatEdge[];
+  minX: number;
+  maxX: number;
+  minY: number;
+  maxY: number;
+};
 function toPointsFromLasData(data: unknown): Point3[] {
   const rows: Point3[] = [];
 
@@ -378,6 +408,237 @@ function computeTapeSamplePoints(
 
   return samples;
 }
+function dist2(a: FlatPoint2D, b: FlatPoint2D) {
+  const dx = a.x - b.x;
+  const dy = a.y - b.y;
+  return Math.sqrt(dx * dx + dy * dy);
+}
+
+function placeFirstTriangleFromLengths(
+  edgeLengths: [number, number, number],
+): [FlatPoint2D, FlatPoint2D, FlatPoint2D] | null {
+  const [a, b, c] = edgeLengths;
+
+  if (a <= 0 || b <= 0 || c <= 0) return null;
+  if (a + b <= c || b + c <= a || c + a <= b) return null;
+
+  // edge 0 を p0-p1 に置く
+  const p0: FlatPoint2D = { x: 0, y: 0 };
+  const p1: FlatPoint2D = { x: a, y: 0 };
+
+  // edge 1 = p1-p2, edge 2 = p2-p0 として再構成
+  const x = (a * a + c * c - b * b) / (2 * a);
+  const y2 = c * c - x * x;
+  const y = Math.sqrt(Math.max(0, y2));
+
+  const p2: FlatPoint2D = { x, y };
+
+  return [p0, p1, p2];
+}
+
+function circleIntersections(
+  a: FlatPoint2D,
+  ra: number,
+  b: FlatPoint2D,
+  rb: number,
+): [FlatPoint2D, FlatPoint2D] | null {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const d = Math.sqrt(dx * dx + dy * dy);
+
+  if (d === 0) return null;
+  if (d > ra + rb) return null;
+  if (d < Math.abs(ra - rb)) return null;
+
+  const ex = dx / d;
+  const ey = dy / d;
+
+  const x = (ra * ra - rb * rb + d * d) / (2 * d);
+  const y2 = ra * ra - x * x;
+  const y = Math.sqrt(Math.max(0, y2));
+
+  const px = a.x + ex * x;
+  const py = a.y + ey * x;
+
+  const rx = -ey * y;
+  const ry = ex * y;
+
+  return [
+    { x: px + rx, y: py + ry },
+    { x: px - rx, y: py - ry },
+  ];
+}
+
+function getTriangleEdgeVertexPairs() {
+  return [
+    [0, 1], // edge 0
+    [1, 2], // edge 1
+    [2, 0], // edge 2
+  ] as const;
+}
+
+function buildConnectedTriangleDevelopment(
+  savedTriangles: SavedTriangle[],
+): ConnectedFlatDevelopment | null {
+  if (savedTriangles.length === 0) return null;
+
+  const edgePairs = getTriangleEdgeVertexPairs();
+  const placed = new Map<string, ConnectedFlatTriangle>();
+
+  const lineToTriangleIds = new Map<string, string[]>();
+  for (const triangle of savedTriangles) {
+    for (const lineId of triangle.lineIds) {
+      if (!lineToTriangleIds.has(lineId)) {
+        lineToTriangleIds.set(lineId, []);
+      }
+      lineToTriangleIds.get(lineId)!.push(triangle.id);
+    }
+  }
+
+  const first = savedTriangles[0];
+  const firstPoints = placeFirstTriangleFromLengths(first.edgeLengths);
+  if (!firstPoints) return null;
+
+  placed.set(first.id, {
+    id: first.id,
+    name: first.name,
+    lineIds: first.lineIds,
+    lineNames: first.lineNames,
+    edgeLengths: first.edgeLengths,
+    points: firstPoints,
+  });
+
+  const queue = [first.id];
+
+  while (queue.length > 0) {
+    const currentId = queue.shift()!;
+    const currentPlaced = placed.get(currentId);
+    if (!currentPlaced) continue;
+
+    for (let currentEdgeIndex = 0; currentEdgeIndex < 3; currentEdgeIndex++) {
+      const sharedLineId = currentPlaced.lineIds[currentEdgeIndex];
+      const neighborIds = lineToTriangleIds.get(sharedLineId) ?? [];
+
+      for (const neighborId of neighborIds) {
+        if (neighborId === currentId) continue;
+        if (placed.has(neighborId)) continue;
+
+        const neighbor = savedTriangles.find((t) => t.id === neighborId);
+        if (!neighbor) continue;
+
+        const neighborSharedEdgeIndex = neighbor.lineIds.findIndex(
+          (id) => id === sharedLineId,
+        );
+        if (neighborSharedEdgeIndex < 0) continue;
+
+        const [curAIndex, curBIndex] = edgePairs[currentEdgeIndex];
+        const sharedA = currentPlaced.points[curAIndex];
+        const sharedB = currentPlaced.points[curBIndex];
+
+        const [nAIndex, nBIndex] = edgePairs[neighborSharedEdgeIndex];
+        const neighborOtherIndex = [0, 1, 2].find(
+          (i) => i !== nAIndex && i !== nBIndex,
+        );
+        if (neighborOtherIndex === undefined) continue;
+
+        const lenToA = (() => {
+          const pairIndex = edgePairs.findIndex(
+            ([i, j]) =>
+              (i === neighborOtherIndex && j === nAIndex) ||
+              (i === nAIndex && j === neighborOtherIndex),
+          );
+          return pairIndex >= 0 ? neighbor.edgeLengths[pairIndex] : null;
+        })();
+
+        const lenToB = (() => {
+          const pairIndex = edgePairs.findIndex(
+            ([i, j]) =>
+              (i === neighborOtherIndex && j === nBIndex) ||
+              (i === nBIndex && j === neighborOtherIndex),
+          );
+          return pairIndex >= 0 ? neighbor.edgeLengths[pairIndex] : null;
+        })();
+
+        if (lenToA === null || lenToB === null) continue;
+
+        const intersections = circleIntersections(sharedA, lenToA, sharedB, lenToB);
+        if (!intersections) continue;
+
+        // 現在三角形の反対側に貼る
+        const currentThirdIndex = [0, 1, 2].find(
+          (i) => i !== curAIndex && i !== curBIndex,
+        );
+        if (currentThirdIndex === undefined) continue;
+
+        const currentThird = currentPlaced.points[currentThirdIndex];
+        const d0 = dist2(intersections[0], currentThird);
+        const d1 = dist2(intersections[1], currentThird);
+
+        const chosen = d0 > d1 ? intersections[0] : intersections[1];
+
+        const nextPoints: [FlatPoint2D, FlatPoint2D, FlatPoint2D] = [
+          { x: 0, y: 0 },
+          { x: 0, y: 0 },
+          { x: 0, y: 0 },
+        ];
+
+        nextPoints[nAIndex] = sharedA;
+        nextPoints[nBIndex] = sharedB;
+        nextPoints[neighborOtherIndex] = chosen;
+
+        placed.set(neighbor.id, {
+          id: neighbor.id,
+          name: neighbor.name,
+          lineIds: neighbor.lineIds,
+          lineNames: neighbor.lineNames,
+          edgeLengths: neighbor.edgeLengths,
+          points: nextPoints,
+        });
+
+        queue.push(neighbor.id);
+      }
+    }
+  }
+
+  const triangles = Array.from(placed.values());
+
+  const edgesMap = new Map<string, ConnectedFlatEdge>();
+
+  for (const tri of triangles) {
+    for (let edgeIndex = 0; edgeIndex < 3; edgeIndex++) {
+      const lineId = tri.lineIds[edgeIndex];
+      if (edgesMap.has(lineId)) continue;
+
+      const [aIndex, bIndex] = edgePairs[edgeIndex];
+      const p1 = tri.points[aIndex];
+      const p2 = tri.points[bIndex];
+
+      edgesMap.set(lineId, {
+        lineId,
+        lineName: tri.lineNames[edgeIndex],
+        length: tri.edgeLengths[edgeIndex],
+        p1,
+        p2,
+      });
+    }
+  }
+
+  const allPoints = triangles.flatMap((tri) => tri.points);
+
+  const minX = Math.min(...allPoints.map((p) => p.x));
+  const maxX = Math.max(...allPoints.map((p) => p.x));
+  const minY = Math.min(...allPoints.map((p) => p.y));
+  const maxY = Math.max(...allPoints.map((p) => p.y));
+
+  return {
+    triangles,
+    edges: Array.from(edgesMap.values()),
+    minX,
+    maxX,
+    minY,
+    maxY,
+  };
+}
 type DevPoint2D = {
   x: number;
   y: number;
@@ -696,19 +957,16 @@ function buildDevelopmentProjection(
 }
 function DevelopmentPreview({
   savedTriangles,
-  savedLines,
   activeTriangleId,
 }: {
   savedTriangles: SavedTriangle[];
-  savedLines: SavedLine[];
   activeTriangleId: string | null;
 }) {
-  const dev = useMemo(
-    () => buildDevelopmentProjection(savedTriangles, savedLines),
-    [savedTriangles, savedLines],
-  );
+  const dev = useMemo(() => {
+    return buildConnectedTriangleDevelopment(savedTriangles);
+  }, [savedTriangles]);
 
-  if (!dev || dev.projectedTriangles.length === 0) {
+  if (!dev || dev.triangles.length === 0) {
     return (
       <div className="flex h-full items-center justify-center text-sm text-slate-400">
         三角形を作成すると、ここに展開図が出ます。
@@ -748,112 +1006,86 @@ function DevelopmentPreview({
         strokeWidth="1"
       />
 
-      {dev.projectedTriangles.map(({ triangle, points }) => {
-        const isActive = activeTriangleId === triangle.id;
+      {dev.triangles.map((tri) => {
+        const isActive = activeTriangleId === tri.id;
 
         return (
-          <g key={triangle.id}>
-            <polygon
-              points={points.map((p) => `${tx(p.x)},${ty(p.y)}`).join(" ")}
-              fill={isActive ? "rgba(34,211,238,0.24)" : "rgba(34,211,238,0.16)"}
-              stroke={isActive ? "#67e8f9" : "#22d3ee"}
-              strokeWidth={isActive ? 2.2 : 1.4}
-            />
+          <polygon
+            key={tri.id}
+            points={tri.points.map((p) => `${tx(p.x)},${ty(p.y)}`).join(" ")}
+            fill={isActive ? "rgba(34,211,238,0.24)" : "rgba(34,211,238,0.16)"}
+            stroke={isActive ? "#67e8f9" : "#22d3ee"}
+            strokeWidth={isActive ? 2.2 : 1.4}
+          />
+        );
+      })}
 
-            {points.map((p, i) => {
-              const next = points[(i + 1) % 3];
-              const mx = (p.x + next.x) / 2;
-              const my = (p.y + next.y) / 2;
+      {dev.edges.map((edge) => {
+        const mx = (edge.p1.x + edge.p2.x) / 2;
+        const my = (edge.p1.y + edge.p2.y) / 2;
 
-              const dx = next.x - p.x;
-              const dy = next.y - p.y;
-              let angleDeg = (Math.atan2(-dy, dx) * 180) / Math.PI;
-              if (angleDeg > 90 || angleDeg < -90) {
-                angleDeg += 180;
-              }
+        const dx = edge.p2.x - edge.p1.x;
+        const dy = edge.p2.y - edge.p1.y;
+        let angleDeg = (Math.atan2(-dy, dx) * 180) / Math.PI;
+        if (angleDeg > 90 || angleDeg < -90) {
+          angleDeg += 180;
+        }
 
-              const lineName = triangle.lineNames[i];
-              const edgeLength = triangle.edgeLengths[i];
-
-              return (
-                <text
-                  key={`${triangle.id}-${lineName}`}
-                  x={tx(mx)}
-                  y={ty(my)}
-                  fontSize="8"
-                  fill="#e2e8f0"
-                  textAnchor="middle"
-                  dominantBaseline="middle"
-                  transform={`rotate(${angleDeg}, ${tx(mx)}, ${ty(my)})`}
-                >
-                  {lineName} / {edgeLength.toFixed(2)}m
-                </text>
-              );
-            })}
-          </g>
+        return (
+          <text
+            key={edge.lineId}
+            x={tx(mx)}
+            y={ty(my)}
+            fontSize="8"
+            fill="#e2e8f0"
+            textAnchor="middle"
+            dominantBaseline="middle"
+            transform={`rotate(${angleDeg}, ${tx(mx)}, ${ty(my)})`}
+          >
+            {edge.lineName} / {edge.length.toFixed(2)}m
+          </text>
         );
       })}
     </svg>
   );
 }
-function buildDevelopmentExportData(
-  savedTriangles: SavedTriangle[],
-  savedLines: SavedLine[],
-) {
-  const dev = buildDevelopmentProjection(savedTriangles, savedLines);
-  if (!dev || dev.projectedTriangles.length === 0) return null;
-
-  return dev.projectedTriangles.map(({ triangle, points }) => ({
-    id: triangle.id,
-    name: triangle.name,
-    points,
-  }));
+function buildDevelopmentExportData(savedTriangles: SavedTriangle[]) {
+  const dev = buildConnectedTriangleDevelopment(savedTriangles);
+  if (!dev || dev.triangles.length === 0) return null;
+  return dev;
 }
 
-function exportDevelopmentToDXF(
-  savedTriangles: SavedTriangle[],
-  savedLines: SavedLine[],
-) {
-  const items = buildDevelopmentExportData(savedTriangles, savedLines);
-  if (!items || items.length === 0) return;
+function exportDevelopmentToDXF(savedTriangles: SavedTriangle[]) {
+  const dev = buildDevelopmentExportData(savedTriangles);
+  if (!dev) return;
 
   let dxf = "0\nSECTION\n2\nENTITIES\n";
 
-  for (const item of items) {
+  for (const tri of dev.triangles) {
     for (let i = 0; i < 3; i++) {
-      const p1 = item.points[i];
-      const p2 = item.points[(i + 1) % 3];
+      const p1 = tri.points[i];
+      const p2 = tri.points[(i + 1) % 3];
 
-      // 線
       dxf +=
         "0\nLINE\n8\n0\n" +
         `10\n${p1.x}\n20\n${p1.y}\n30\n0\n` +
         `11\n${p2.x}\n21\n${p2.y}\n31\n0\n`;
-
-      // 中点
-      const mx = (p1.x + p2.x) / 2;
-      const my = (p1.y + p2.y) / 2;
-
-      // 長さ
-      const dx = p2.x - p1.x;
-      const dy = p2.y - p1.y;
-      const len = Math.sqrt(dx * dx + dy * dy);
-
-      // ラベル文字（L1など）
-      const label = `${item.name}-${i + 1}`;
-
-      // TEXT（ラベル）
-      dxf +=
-        "0\nTEXT\n8\n0\n" +
-        `10\n${mx}\n20\n${my + 0.2}\n30\n0\n` +
-        `40\n0.2\n1\n${label}\n`;
-
-      // TEXT（寸法）
-      dxf +=
-        "0\nTEXT\n8\n0\n" +
-        `10\n${mx}\n20\n${my - 0.2}\n30\n0\n` +
-        `40\n0.2\n1\n${len.toFixed(3)}m\n`;
     }
+  }
+
+  for (const edge of dev.edges) {
+    const mx = (edge.p1.x + edge.p2.x) / 2;
+    const my = (edge.p1.y + edge.p2.y) / 2;
+
+    dxf +=
+      "0\nTEXT\n8\n0\n" +
+      `10\n${mx}\n20\n${my + 0.15}\n30\n0\n` +
+      `40\n0.18\n1\n${edge.lineName}\n`;
+
+    dxf +=
+      "0\nTEXT\n8\n0\n" +
+      `10\n${mx}\n20\n${my - 0.15}\n30\n0\n` +
+      `40\n0.18\n1\n${edge.length.toFixed(3)}m\n`;
   }
 
   dxf += "0\nENDSEC\n0\nEOF\n";
@@ -863,11 +1095,13 @@ function exportDevelopmentToDXF(
 
   const a = document.createElement("a");
   a.href = url;
-  a.download = "development-preview.dxf";
+  a.download = "connected-development.dxf";
   a.click();
 
   URL.revokeObjectURL(url);
 }
+
+
 
 function handlePrintDevelopment() {
   window.print();
@@ -1838,9 +2072,8 @@ setHoverSnapPoint(null);
 
       <button
         type="button"
-        onClick={() =>
-          exportDevelopmentToDXF(savedTriangles, savedLines)
-        }
+       onClick={() => exportDevelopmentToDXF(savedTriangles)}
+        
         disabled={savedTriangles.length === 0}
         className="rounded border border-white/10 bg-white/5 px-2 py-1 text-xs text-slate-200 hover:bg-white/10 disabled:opacity-40"
       >
@@ -1850,11 +2083,10 @@ setHoverSnapPoint(null);
   </div>
 
   <div className="mt-3 h-[280px] rounded-lg border border-white/10 bg-slate-950/70 p-2">
-    <DevelopmentPreview
-      savedTriangles={savedTriangles}
-      savedLines={savedLines}
-      activeTriangleId={activeTriangle?.id ?? null}
-    />
+   <DevelopmentPreview
+  savedTriangles={savedTriangles}
+  activeTriangleId={activeTriangle?.id ?? null}
+/>
   </div>
 
   {/* タイトル欄 */}
