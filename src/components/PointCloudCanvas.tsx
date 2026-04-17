@@ -874,7 +874,8 @@ useEffect(() => {
   const dom = controls.domElement;
 
   const onPointerDown = (e: PointerEvent) => {
-    if (e.buttons === 3) {
+    // Shift + 左ドラッグでズーム開始
+    if (e.shiftKey && e.button === 0) {
       dualZoomActiveRef.current = true;
       lastYRef.current = e.clientY;
       e.preventDefault();
@@ -888,10 +889,11 @@ useEffect(() => {
     lastYRef.current = e.clientY;
 
     const camera = controls.object as THREE.PerspectiveCamera;
+    const offset = new THREE.Vector3()
+      .copy(camera.position)
+      .sub(controls.target);
 
-    const offset = new THREE.Vector3().copy(camera.position).sub(controls.target);
-
-    // dy > 0 で引く、dy < 0 で寄る
+    // 上へドラッグで寄る、下へドラッグで引く
     const zoomScale = Math.exp(dy * 0.003);
 
     offset.multiplyScalar(zoomScale);
@@ -900,13 +902,12 @@ useEffect(() => {
     const maxDist = Math.max(maxSpan * 20, 500);
 
     const dist = offset.length();
-    if (dist < minDist) {
-      offset.setLength(minDist);
-    } else if (dist > maxDist) {
-      offset.setLength(maxDist);
-    }
+    if (dist < minDist) offset.setLength(minDist);
+    if (dist > maxDist) offset.setLength(maxDist);
 
-    camera.position.copy(new THREE.Vector3().copy(controls.target).add(offset));
+    camera.position.copy(
+      new THREE.Vector3().copy(controls.target).add(offset)
+    );
     controls.update();
 
     e.preventDefault();
@@ -917,23 +918,14 @@ useEffect(() => {
     lastYRef.current = null;
   };
 
-  const onContextMenu = (e: MouseEvent) => {
-    // 左右同時押しズーム中だけ右クリックメニューを抑止
-    if (dualZoomActiveRef.current) {
-      e.preventDefault();
-    }
-  };
-
   dom.addEventListener("pointerdown", onPointerDown);
   dom.addEventListener("pointermove", onPointerMove);
   window.addEventListener("pointerup", onPointerUp);
-  dom.addEventListener("contextmenu", onContextMenu);
 
   return () => {
     dom.removeEventListener("pointerdown", onPointerDown);
     dom.removeEventListener("pointermove", onPointerMove);
     window.removeEventListener("pointerup", onPointerUp);
-    dom.removeEventListener("contextmenu", onContextMenu);
   };
 }, [maxSpan]);
 
@@ -985,7 +977,7 @@ if (viewMode === "top") {
    mouseButtons={{
   LEFT: THREE.MOUSE.ROTATE,
   MIDDLE: THREE.MOUSE.PAN,
-  RIGHT: undefined as any,
+  RIGHT: THREE.MOUSE.ROTATE,
 }}
     />
   );
