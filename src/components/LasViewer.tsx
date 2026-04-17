@@ -1503,11 +1503,11 @@ setHoverSnapPoint(null);
   <input
     type="range"
     min={0}
-    max={0.03}
+    max={0.05}
     step={0.001}
     value={searchRadius}
     onChange={(e) =>
-      setSearchRadius(clamp(Number(e.target.value), 0, 0.03))
+      setSearchRadius(clamp(Number(e.target.value), 0, 0.05))
     }
     className="mt-1 w-full"
   />
@@ -1894,7 +1894,7 @@ setHoverSnapPoint(null);
   <div className="text-xs font-semibold uppercase tracking-wide text-cyan-100/80">
     保存線一覧
   </div>
-  <div className="mt-3 flex items-center gap-2">
+  <div className="mt-4 flex items-center justify-between gap-2">
   <div className="text-xs text-slate-400">
     選択中: {selectedLineIds.length} / 3
   </div>

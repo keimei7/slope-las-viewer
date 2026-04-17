@@ -537,14 +537,16 @@ function SavedLineLabel({
 
   return (
     <Html
-      position={[
-        anchor.x - bounds.cx,
-        anchor.y - bounds.cy,
-        (anchor.z - bounds.cz) * zScale + 0.08,
-      ]}
-      center
-    >
-      <div className="rounded bg-black/70 px-1.5 py-0.5 text-[9px] text-white whitespace-nowrap shadow">
+  position={[
+    anchor.x - bounds.cx,
+    anchor.y - bounds.cy,
+    (anchor.z - bounds.cz) * zScale + 0.08,
+  ]}
+  center
+  zIndexRange={[0, 0]}
+  style={{ pointerEvents: "none" }}
+>
+      <div className="rounded bg-black/60 px-1 py-0.5 text-[8px] text-white/90 whitespace-nowrap shadow">
         {line.name} / {line.surfaceLength.toFixed(2)}m
       </div>
     </Html>
@@ -601,7 +603,6 @@ function SavedLinesLayer({
               onHoverSavedLine(null);
             }}
           />
-          <SavedLineLabel line={line} bounds={bounds} zScale={zScale} />
         </group>
       ))}
     </>
