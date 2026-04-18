@@ -891,7 +891,7 @@ const [hoverPoint, setHoverPoint] = useState<PickedPoint | null>(null);
 const [guideMode, setGuideMode] = useState<GuideMode>("free");
 const [guideAngleDeg, setGuideAngleDeg] = useState<number | null>(null);
 
-  const [maxDisplayPoints, setMaxDisplayPoints] = useState(600000);
+const [maxDisplayPoints, setMaxDisplayPoints] = useState(2000000);
   const [zScale, setZScale] = useState(1);
  const [pointSize, setPointSize] = useState(0.016);
 const [lineWidthScale, setLineWidthScale] = useState(2);
@@ -1372,6 +1372,10 @@ setIsPinned(false);
   panSpeed={panSpeed}
   cameraLift={cameraLift}
   reliefSteps={reliefSteps}
+  leftWidth={leftWidth}
+  rightWidth={rightWidth}
+  leftCollapsed={leftCollapsed}
+  rightCollapsed={rightCollapsed}
 />
 {points.length === 0 ? (
   <button
@@ -1615,7 +1619,7 @@ step={0.002} // ←少し鈍く（2mm刻み）
     <input
       type="range"
       min={100000}
-      max={2000000}
+max={5000000}
       step={100000}
       value={maxDisplayPoints}
       onChange={(e) =>
