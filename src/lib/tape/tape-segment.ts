@@ -3,6 +3,7 @@ export type Vec3 = {
   y: number;
   z: number;
 };
+
 export type TapeOptions = {
   segments?: number;
   iterations?: number;
@@ -60,18 +61,19 @@ export function buildTapeSegmentPath(
   sampleTerrain: SampleTerrainFn,
   options: TapeOptions = {},
 ): Vec3[] {
-  const segments = options.segments ?? 24;
-  const iterations = options.iterations ?? 8;
+  const segments = Math.max(1, options.segments ?? 24);
+  const iterations = Math.max(1, options.iterations ?? 8);
   const cling = options.cling ?? 0.3;
   const tension = options.tension ?? 0.75;
   const endGrip = options.endGrip ?? 0.85;
+  const base = options.baseSamples ?? [];
+  const fixedSet = new Set(options.constraintIndices ?? []);
 
   if (segments < 1) return [start, end];
-  const nodes: Vec3[] = [];
-  const base = options.baseSamples;
 
+  const nodes: Vec3[] = [];
   for (let i = 0; i <= segments; i += 1) {
-    if (base && base[i]) {
+    if (base[i]) {
       nodes.push({ ...base[i] });
     } else {
       nodes.push(lerpVec3(start, end, i / segments));
@@ -83,10 +85,13 @@ export function buildTapeSegmentPath(
     restLengths.push(distance(nodes[i], nodes[i + 1]));
   }
 
+  const avgRest =
+    restLengths.reduce((sum, v) => sum + v, 0) / Math.max(restLengths.length, 1);
+
   for (let iter = 0; iter < iterations; iter += 1) {
     for (let i = 1; i < segments; i += 1) {
-              const isFixed = options.constraintIndices?.includes(i);
-      if (isFixed) continue;
+      if (fixedSet.has(i)) continue;
+
       const prev = nodes[i - 1];
       const curr = nodes[i];
       const next = nodes[i + 1];
@@ -107,26 +112,23 @@ export function buildTapeSegmentPath(
       );
 
       let updated = add(curr, add(fixPrev, fixNext));
-      const prevZ = curr.z;
-const maxDeltaZ = 0.15; // ←これ重要
 
-if (Math.abs(updated.z - prevZ) > maxDeltaZ) {
-  updated.z = prevZ + Math.sign(updated.z - prevZ) * maxDeltaZ;
-}
-      const anchor = base && base[i] ? base[i] : null;
+      // z暴れ抑制
+      const maxDeltaZ = Math.max(avgRest * 0.45, 0.08);
+      const dz = updated.z - curr.z;
+      if (Math.abs(dz) > maxDeltaZ) {
+        updated.z = curr.z + Math.sign(dz) * maxDeltaZ;
+      }
 
+      // 全体移動量も抑制
       const moveDx = updated.x - curr.x;
       const moveDy = updated.y - curr.y;
       const moveDz = updated.z - curr.z;
       const moveDist = Math.sqrt(
-        moveDx * moveDx + moveDy * moveDy + moveDz * moveDz
+        moveDx * moveDx + moveDy * moveDy + moveDz * moveDz,
       );
 
-      const avgRest =
-        restLengths.reduce((sum, v) => sum + v, 0) / Math.max(restLengths.length, 1);
-
       const maxMove = Math.max(avgRest * 0.35, 0.04);
-
       if (moveDist > maxMove) {
         const ratio = maxMove / moveDist;
         updated = {
@@ -136,31 +138,41 @@ if (Math.abs(updated.z - prevZ) > maxDeltaZ) {
         };
       }
 
+      // 始終点直線への戻し
+      const t = i / segments;
+      const lineBase = lerpVec3(start, end, t);
+      updated.x = lerp(updated.x, lineBase.x, 0.2);
+      updated.y = lerp(updated.y, lineBase.y, 0.2);
+
+      // base sample があるなら横方向をかなり拘束
+      const anchor = base[i] ?? null;
       if (anchor) {
         updated.x = lerp(updated.x, anchor.x, 0.82);
         updated.y = lerp(updated.y, anchor.y, 0.82);
       }
-         const terrain = sampleTerrain(updated.x, updated.y);
 
+      // 地形貫通防止
+      const terrain = sampleTerrain(updated.x, updated.y);
       if (terrain.z !== null) {
-       const t = i / segments;
-const base = lerpVec3(start, end, t);
+        const skin = 0.003;
+        const minAllowedZ = terrain.z + skin;
 
-// 20%だけ戻す
-updated.x = updated.x * 0.8 + base.x * 0.2;
-updated.y = updated.y * 0.8 + base.y * 0.2;
-
-     if (terrain.z !== null) {
-  const skin = 0.003;
-
-  if (updated.z < terrain.z + skin) {
-    updated.z = terrain.z + skin;
-  }
-}
+        if (updated.z < minAllowedZ) {
+          updated.z = minAllowedZ;
+        } else {
+          const edgeRatio = Math.abs(t - 0.5) * 2;
+          const localGrip = lerp(cling, endGrip, edgeRatio);
+          updated.z = lerp(updated.z, minAllowedZ, localGrip * 0.12);
+        }
+      }
 
       nodes[i] = updated;
     }
   }
+
+  // 端点を確実に戻す
+  nodes[0] = { ...start };
+  nodes[nodes.length - 1] = { ...end };
 
   return nodes;
 }
@@ -170,7 +182,10 @@ export function computePolylineLength(points: Vec3[]) {
 
   let total = 0;
   for (let i = 1; i < points.length; i += 1) {
-    total += distance(points[i - 1], points[i]);
+    const dx = points[i].x - points[i - 1].x;
+    const dy = points[i].y - points[i - 1].y;
+    const dz = points[i].z - points[i - 1].z;
+    total += Math.sqrt(dx * dx + dy * dy + dz * dz);
   }
   return total;
 }
