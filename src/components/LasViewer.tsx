@@ -1011,37 +1011,65 @@ const effectiveSearchRadius = useMemo(() => {
 }, [searchRadius, pointSize]);
 const sampleTerrain = useMemo(() => {
   return (x: number, y: number) => {
-    let best: Point3 | null = null;
-    let bestD2 = Infinity;
+    const radius = Math.max(sliceWidth * 2.0, 0.02);
+    const r2 = radius * radius;
+
+    const zs: number[] = [];
 
     for (const p of points) {
       const dx = p.x - x;
       const dy = p.y - y;
       const d2 = dx * dx + dy * dy;
 
-      if (d2 < bestD2) {
-        bestD2 = d2;
-        best = p;
-      }
+      if (d2 > r2) continue;
+      zs.push(p.z);
     }
 
-    return { z: best ? best.z : null };
+    if (zs.length === 0) {
+      return { z: null };
+    }
+
+    zs.sort((a, b) => b - a);
+
+    return {
+      z: zs[Math.floor(zs.length * 0.15)] ?? zs[0] ?? null,
+    };
   };
-}, [points]);
+}, [points, sliceWidth]);
 const tapePoints = useMemo(() => {
   if (!startPoint || !endPoint) return [];
 
-  if (tapeSolverMode === "physics") {
+   if (tapeSolverMode === "physics") {
+    const baseSamples = computeTapeSamplePoints(
+      points,
+      startPoint,
+      endPoint,
+      Math.max(divisionCount, 12),
+      effectiveSearchRadius,
+      sliceWidth,
+      guideMode,
+    );
+
+    const featureIndices = extractFeaturePoints(baseSamples);
+
+    const constraintIndices = [
+      0,
+      ...featureIndices,
+      baseSamples.length - 1,
+    ];
+
     return buildTapeSegmentPath(
       startPoint,
       endPoint,
       sampleTerrain,
       {
-        segments: Math.max(divisionCount * 3, 12),
-        iterations: 8,
-        cling: 0.28,
-        tension: 0.78,
-        endGrip: 0.88,
+        segments: Math.max(baseSamples.length, 16),
+        iterations: 6,
+        cling: 0.26,
+        tension: 0.75,
+        endGrip: 0.94,
+        constraintIndices,
+        baseSamples,
       },
     );
   }
@@ -1070,6 +1098,44 @@ const tapePoints = useMemo(() => {
   if (tapePoints.length < 2) return null;
   return computePolylineLength(tapePoints);
 }, [tapePoints]);
+function extractFeaturePoints(points: PickedPoint[]) {
+  const rawIndices: number[] = [];
+
+  for (let i = 1; i < points.length - 1; i++) {
+    const prev = points[i - 1];
+    const curr = points[i];
+    const next = points[i + 1];
+
+    const dz1 = curr.z - prev.z;
+    const dz2 = next.z - curr.z;
+
+    if (dz1 > 0 && dz2 < 0) {
+      rawIndices.push(i);
+      continue;
+    }
+
+    if (dz1 >= 0 && dz2 < -0.02) {
+      rawIndices.push(i);
+      continue;
+    }
+
+    if (Math.abs(dz2 - dz1) > 0.03) {
+      rawIndices.push(i);
+    }
+  }
+
+  rawIndices.sort((a, b) => a - b);
+
+  const filtered: number[] = [];
+  for (const index of rawIndices) {
+    const last = filtered[filtered.length - 1];
+    if (last === undefined || index - last >= 2) {
+      filtered.push(index);
+    }
+  }
+
+  return filtered;
+}
 function handlePick(point: PickedPoint) {
   const snapped = hoverSnapPoint ?? snapToExistingPoint(point, savedLines);
 

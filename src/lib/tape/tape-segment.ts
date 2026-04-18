@@ -3,13 +3,14 @@ export type Vec3 = {
   y: number;
   z: number;
 };
-
 export type TapeOptions = {
   segments?: number;
   iterations?: number;
-  cling?: number;     // 地形へ寄る強さ
-  tension?: number;   // 張りの強さ
-  endGrip?: number;   // 端部の接地強さ
+  cling?: number;
+  tension?: number;
+  endGrip?: number;
+  constraintIndices?: number[];
+  baseSamples?: Vec3[];
 };
 
 export type SampleTerrainFn = (x: number, y: number) => {
@@ -66,10 +67,15 @@ export function buildTapeSegmentPath(
   const endGrip = options.endGrip ?? 0.85;
 
   if (segments < 1) return [start, end];
-
   const nodes: Vec3[] = [];
+  const base = options.baseSamples;
+
   for (let i = 0; i <= segments; i += 1) {
-    nodes.push(lerpVec3(start, end, i / segments));
+    if (base && base[i]) {
+      nodes.push({ ...base[i] });
+    } else {
+      nodes.push(lerpVec3(start, end, i / segments));
+    }
   }
 
   const restLengths: number[] = [];
@@ -79,6 +85,8 @@ export function buildTapeSegmentPath(
 
   for (let iter = 0; iter < iterations; iter += 1) {
     for (let i = 1; i < segments; i += 1) {
+              const isFixed = options.constraintIndices?.includes(i);
+      if (isFixed) continue;
       const prev = nodes[i - 1];
       const curr = nodes[i];
       const next = nodes[i + 1];
@@ -99,18 +107,45 @@ export function buildTapeSegmentPath(
       );
 
       let updated = add(curr, add(fixPrev, fixNext));
+      const anchor = base && base[i] ? base[i] : null;
 
-      const terrain = sampleTerrain(updated.x, updated.y);
+      const moveDx = updated.x - curr.x;
+      const moveDy = updated.y - curr.y;
+      const moveDz = updated.z - curr.z;
+      const moveDist = Math.sqrt(
+        moveDx * moveDx + moveDy * moveDy + moveDz * moveDz
+      );
+
+      const avgRest =
+        restLengths.reduce((sum, v) => sum + v, 0) / Math.max(restLengths.length, 1);
+
+      const maxMove = Math.max(avgRest * 0.35, 0.04);
+
+      if (moveDist > maxMove) {
+        const ratio = maxMove / moveDist;
+        updated = {
+          x: curr.x + moveDx * ratio,
+          y: curr.y + moveDy * ratio,
+          z: curr.z + moveDz * ratio,
+        };
+      }
+
+      if (anchor) {
+        updated.x = lerp(updated.x, anchor.x, 0.82);
+        updated.y = lerp(updated.y, anchor.y, 0.82);
+      }
+         const terrain = sampleTerrain(updated.x, updated.y);
 
       if (terrain.z !== null) {
         const t = i / segments;
-        const edgeWeight = 1 - Math.abs(t - 0.5) * 2; // 中央0, 端1にしたいので後で反転
-        const grip = lerp(endGrip, cling, edgeWeight);
+        const centerFactor = 1 - Math.abs(t - 0.5) * 2;
+        const grip = lerp(endGrip, cling, centerFactor);
+        const skin = 0.003;
 
-        if (updated.z < terrain.z) {
-          updated.z = terrain.z;
+        if (updated.z < terrain.z + skin) {
+          updated.z = terrain.z + skin;
         } else {
-          updated.z = lerp(updated.z, terrain.z, grip);
+          updated.z = lerp(updated.z, terrain.z + skin, grip);
         }
       }
 
