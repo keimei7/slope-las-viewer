@@ -69,56 +69,8 @@ type ConnectedFlatDevelopment = {
   maxY: number;
 };
 
-function voxelDownsample(points: Point3[], voxelSize: number) {
-  if (points.length === 0) return points;
 
-  const map = new Map<string, Point3>();
 
-  for (const p of points) {
-    const ix = Math.floor(p.x / voxelSize);
-    const iy = Math.floor(p.y / voxelSize);
-    const iz = Math.floor(p.z / voxelSize);
-
-    const key = `${ix}_${iy}_${iz}`;
-
-    if (!map.has(key)) {
-      map.set(key, p);
-    }
-  }
-
-  return Array.from(map.values());
-}
-
-function distancePointToSegment2D(
-  px: number,
-  py: number,
-  ax: number,
-  ay: number,
-  bx: number,
-  by: number,
-) {
-  const abx = bx - ax;
-  const aby = by - ay;
-  const apx = px - ax;
-  const apy = py - ay;
-
-  const abLenSq = abx * abx + aby * aby;
-  if (abLenSq === 0) {
-    const dx = px - ax;
-    const dy = py - ay;
-    return Math.sqrt(dx * dx + dy * dy);
-  }
-
-  let t = (apx * abx + apy * aby) / abLenSq;
-  t = Math.max(0, Math.min(1, t));
-
-  const cx = ax + abx * t;
-  const cy = ay + aby * t;
-
-  const dx = px - cx;
-  const dy = py - cy;
-  return Math.sqrt(dx * dx + dy * dy);
-}
 function toPointsFromLasData(data: unknown): Point3[] {
   const rows: Point3[] = [];
 
@@ -891,7 +843,6 @@ const [hoverPoint, setHoverPoint] = useState<PickedPoint | null>(null);
 const [guideMode, setGuideMode] = useState<GuideMode>("free");
 const [guideAngleDeg, setGuideAngleDeg] = useState<number | null>(null);
 
-const [maxDisplayPoints, setMaxDisplayPoints] = useState(2000000);
   const [zScale, setZScale] = useState(1);
  const [pointSize, setPointSize] = useState(0.016);
 const [lineWidthScale, setLineWidthScale] = useState(2);
@@ -921,9 +872,6 @@ const [zoomSpeed, setZoomSpeed] = useState(0.7);      // ↓ズーム暴れ防�
 const [panSpeed, setPanSpeed] = useState(0.5);        // ↓移動も落ち着く
 const [reliefSteps, setReliefSteps] = useState(0);
 
-const [voxelBase, setVoxelBase] = useState(0.05);
-const [displayPoints, setDisplayPoints] = useState<Point3[]>([]);
-
 const isSamePoint = (a: PickedPoint, b: PickedPoint, eps = 0.001) => {
   return (
     Math.abs(a.x - b.x) < eps &&
@@ -949,23 +897,7 @@ const isDuplicateLine = useMemo(() => {
     return sameForward || sameReverse;
   });
 }, [startPoint, endPoint, savedLines]);
-const focusPoints = useMemo(() => {
-  if (!startPoint || !endPoint) return [];
 
-  const radius = Math.max(focusWidth, sliceWidth * 4);
-
-  return points.filter((p) => {
-    const d = distancePointToSegment2D(
-      p.x,
-      p.y,
-      startPoint.x,
-      startPoint.y,
-      endPoint.x,
-      endPoint.y,
-    );
-    return d <= radius;
-  });
-}, [points, startPoint, endPoint, focusWidth, sliceWidth]);
 const activeTriangle = useMemo(() => {
   if (hoverTriangleId) {
     return savedTriangles.find((t) => t.id === hoverTriangleId) ?? null;
@@ -976,36 +908,6 @@ const totalTriangleArea = useMemo(() => {
   return savedTriangles.reduce((sum, triangle) => sum + triangle.area, 0);
 }, [savedTriangles]);
 
-useEffect(() => {
-  if (points.length === 0) {
-    setDisplayPoints([]);
-    return;
-  }
-
-  if (points.length <= maxDisplayPoints) {
-    setDisplayPoints(points);
-    return;
-  }
-
-  const density = points.length / maxDisplayPoints;
-  const voxelSize = Math.pow(density, 1 / 3) * 0.05;
-
-  const worker = new Worker(
-    new URL("../workers/pointWorker.ts", import.meta.url),
-    { type: "module" }
-  );
-
-  worker.postMessage({ points, voxelSize });
-
-  worker.onmessage = (event) => {
-    setDisplayPoints(event.data);
-    worker.terminate();
-  };
-
-  return () => {
-    worker.terminate();
-  };
-}, [points, maxDisplayPoints]);
 
   const stats = useMemo(() => {
     if (points.length === 0) return null;
@@ -1341,8 +1243,7 @@ setIsPinned(false);
     <div className="relative h-screen w-screen overflow-hidden bg-slate-950 text-slate-100">
 <PointCloudCanvas
   onResetMeasuredPoints={resetMeasuredPointsOnly}
-  points={displayPoints}
-  focusPoints={focusPoints}
+  points={points}
   startPoint={startPoint}
   endPoint={endPoint}
   onPickPoint={handlePick}
@@ -1612,22 +1513,7 @@ step={0.002} // ←少し鈍く（2mm刻み）
 </div>
 </div>
 
-  <div className="mt-3">
-    <label className="block text-xs text-slate-300">
-      表示点数上限: {maxDisplayPoints.toLocaleString()}
-    </label>
-    <input
-      type="range"
-      min={100000}
-max={5000000}
-      step={100000}
-      value={maxDisplayPoints}
-      onChange={(e) =>
-        setMaxDisplayPoints(clamp(Number(e.target.value), 100000, 2000000))
-      }
-      className="mt-1 w-full"
-    />
-  </div>
+  
 
   <div className="mt-3">
     <label className="block text-xs text-slate-300">
@@ -1792,20 +1678,7 @@ step={0.02}
     className="mt-1 w-full"
   />
 </div>
-<div className="mt-3">
-  <label className="block text-xs text-slate-300">
-    軽量化強度: {voxelBase.toFixed(3)}
-  </label>
-  <input
-    type="range"
-    min={0.01}
-    max={0.2}
-    step={0.005}
-    value={voxelBase}
-    onChange={(e) => setVoxelBase(Number(e.target.value))}
-    className="mt-1 w-full"
-  />
-</div>
+
 
 
               <div className="mt-4 flex flex-wrap gap-2">
@@ -1832,9 +1705,9 @@ step={0.02}
                 </button>
               </div>
 
-              <div className="mt-3 text-xs text-slate-400">
-                表示中: {displayPoints.length.toLocaleString()} 点
-              </div>
+             <div className="mt-3 text-xs text-slate-400">
+  表示中: {points.length.toLocaleString()} 点
+</div>
             </div>
 
             <div className="mt-4 rounded-xl border border-white/10 bg-black/15 p-3">

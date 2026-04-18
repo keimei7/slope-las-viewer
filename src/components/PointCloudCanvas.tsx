@@ -1,12 +1,11 @@
 "use client";
 
-import { Canvas } from "@react-three/fiber";
+import { Canvas, useThree } from "@react-three/fiber";
 import { OrbitControls, Line, Html } from "@react-three/drei";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import { TOUCH } from "three";
 import type { PickedPoint, Point3 } from "./LasViewer";
-import { useThree } from "@react-three/fiber";
 type ViewMode = "top" | "angled";
 
 type SavedLine = {
@@ -27,32 +26,7 @@ type SavedTriangle = {
   edgeLengths: [number, number, number];
   area: number;
 };
-function buildPixelLOD(
-  points: Point3[],
-  camera: THREE.Camera,
-  size: { width: number; height: number },
-  density: number = 1.2, // 小さいほど密
-) {
-  const projected = new Map<string, Point3>();
 
-  const vec = new THREE.Vector3();
-
-  for (const p of points) {
-    vec.set(p.x, p.y, p.z);
-    vec.project(camera);
-
-    const x = Math.floor((vec.x * 0.5 + 0.5) * size.width / density);
-    const y = Math.floor((vec.y * -0.5 + 0.5) * size.height / density);
-
-    const key = `${x}_${y}`;
-
-    if (!projected.has(key)) {
-      projected.set(key, p);
-    }
-  }
-
-  return Array.from(projected.values());
-}
 
 function computeBounds(points: Point3[]) {
   if (points.length === 0) {
@@ -341,12 +315,12 @@ function AdaptivePointCloud({
   rightCollapsed: boolean;
 }) {
   const { camera, size } = useThree();
+  const bounds = useMemo(() => computeBounds(points), [points]);
 
   const visiblePoints = useMemo(() => {
     const vec = new THREE.Vector3();
     const result: Point3[] = [];
 
-    // DOM上の左右パネルぶんを除いた「見えてる中央作業範囲」
     const leftBlocked = leftCollapsed ? 16 : leftWidth + 16;
     const rightBlocked = rightCollapsed ? 16 : rightWidth + 16;
 
@@ -356,13 +330,17 @@ function AdaptivePointCloud({
     for (let i = 0; i < points.length; i++) {
       const p = points[i];
 
-      vec.set(p.x, p.y, p.z).project(camera);
+      vec
+        .set(
+          p.x - bounds.cx,
+          p.y - bounds.cy,
+          (p.z - bounds.cz) * zScale,
+        )
+        .project(camera);
 
-      // NDC -> screen px
       const sx = (vec.x * 0.5 + 0.5) * size.width;
       const sy = (vec.y * -0.5 + 0.5) * size.height;
 
-      // 画面内に見えてる点だけ判定対象
       const inScreen =
         sx >= 0 &&
         sx <= size.width &&
@@ -373,15 +351,9 @@ function AdaptivePointCloud({
 
       if (!inScreen) continue;
 
-      // サイドバーに被ってない中央作業範囲ならフルで残す
       if (sx >= safeLeft && sx <= safeRight) {
         result.push(p);
-        continue;
-      }
-
-      // サイドバーの下は間引く
-      // ここはかなり弱めに 1/4 だけ残す
-      if (i % 4 === 0) {
+      } else if (i % 3 === 0) {
         result.push(p);
       }
     }
@@ -389,8 +361,10 @@ function AdaptivePointCloud({
     return result;
   }, [
     points,
+    bounds,
     camera,
     size,
+    zScale,
     leftWidth,
     rightWidth,
     leftCollapsed,
@@ -1035,7 +1009,7 @@ useEffect(() => {
     dom.removeEventListener("pointermove", onPointerMove);
     window.removeEventListener("pointerup", onPointerUp);
   };
-}, [maxSpan,]);
+}, [maxSpan]);
 
 
   useEffect(() => {
@@ -1061,7 +1035,7 @@ if (viewMode === "top") {
 
    controls.update();
  
-}, [points, maxSpan, targetZ, viewMode, viewResetKey, ]);
+}, [points, maxSpan, targetZ, viewMode, viewResetKey]);
 
   return (
     <OrbitControls
@@ -1095,7 +1069,6 @@ rightWidth,
 leftCollapsed,
 rightCollapsed,
   points,
-  focusPoints,
   startPoint,
   endPoint,
   onPickPoint,
@@ -1132,7 +1105,6 @@ rightWidth: number;
 leftCollapsed: boolean;
 rightCollapsed: boolean;
   points: Point3[];
-  focusPoints: Point3[];
   reliefSteps: number;
   selectedLineIds: string[];
   lineWidthScale: number;
