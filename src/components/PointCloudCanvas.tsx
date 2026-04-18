@@ -313,7 +313,6 @@ function PointCloud({
 }
 function AdaptivePointCloud({
   points,
-  focusPoints,
   zScale,
   pointSize,
   onPick,
@@ -322,9 +321,12 @@ function AdaptivePointCloud({
   endPoint,
   focusWidth,
   sliceWidth,
+  leftWidth,
+  rightWidth,
+  leftCollapsed,
+  rightCollapsed,
 }: {
   points: Point3[];
-  focusPoints: Point3[];
   zScale: number;
   pointSize: number;
   onPick: (point: PickedPoint) => void;
@@ -333,74 +335,80 @@ function AdaptivePointCloud({
   endPoint: PickedPoint | null;
   focusWidth: number;
   sliceWidth: number;
+  leftWidth: number;
+  rightWidth: number;
+  leftCollapsed: boolean;
+  rightCollapsed: boolean;
 }) {
   const { camera, size } = useThree();
 
-  const pixelLODPoints = useMemo(() => {
-    const buildPixelLOD = (
-      sourcePoints: Point3[],
-      camera: THREE.Camera,
-      size: { width: number; height: number },
-      density: number = 1.5,
-    ) => {
-      const projected = new Map<string, Point3>();
-      const vec = new THREE.Vector3();
+  const visiblePoints = useMemo(() => {
+    const vec = new THREE.Vector3();
+    const result: Point3[] = [];
 
-      for (const p of sourcePoints) {
-        vec.set(p.x, p.y, p.z).project(camera);
+    // DOM上の左右パネルぶんを除いた「見えてる中央作業範囲」
+    const leftBlocked = leftCollapsed ? 16 : leftWidth + 16;
+    const rightBlocked = rightCollapsed ? 16 : rightWidth + 16;
 
-        const x = Math.floor(((vec.x * 0.5 + 0.5) * size.width) / density);
-        const y = Math.floor(((vec.y * -0.5 + 0.5) * size.height) / density);
+    const safeLeft = leftBlocked;
+    const safeRight = Math.max(size.width - rightBlocked, safeLeft + 1);
 
-        const key = `${x}_${y}`;
-        if (!projected.has(key)) {
-          projected.set(key, p);
-        }
+    for (let i = 0; i < points.length; i++) {
+      const p = points[i];
+
+      vec.set(p.x, p.y, p.z).project(camera);
+
+      // NDC -> screen px
+      const sx = (vec.x * 0.5 + 0.5) * size.width;
+      const sy = (vec.y * -0.5 + 0.5) * size.height;
+
+      // 画面内に見えてる点だけ判定対象
+      const inScreen =
+        sx >= 0 &&
+        sx <= size.width &&
+        sy >= 0 &&
+        sy <= size.height &&
+        vec.z >= -1 &&
+        vec.z <= 1;
+
+      if (!inScreen) continue;
+
+      // サイドバーに被ってない中央作業範囲ならフルで残す
+      if (sx >= safeLeft && sx <= safeRight) {
+        result.push(p);
+        continue;
       }
 
-      return Array.from(projected.values());
-    };
-
-    if (points.length > 1500000) {
-      return buildPixelLOD(
-        points.filter((_, i) => i % 2 === 0),
-        camera,
-        size,
-        1.5,
-      );
+      // サイドバーの下は間引く
+      // ここはかなり弱めに 1/4 だけ残す
+      if (i % 4 === 0) {
+        result.push(p);
+      }
     }
 
-    return buildPixelLOD(points, camera, size, 1.5);
-  }, [points, camera, size]);
+    return result;
+  }, [
+    points,
+    camera,
+    size,
+    leftWidth,
+    rightWidth,
+    leftCollapsed,
+    rightCollapsed,
+  ]);
 
   return (
-    <>
-      <PointCloud
-        points={pixelLODPoints}
-        zScale={zScale}
-        pointSize={pointSize}
-        onPick={onPick}
-        onHover={onHover}
-        startPoint={startPoint}
-        endPoint={endPoint}
-        focusWidth={focusWidth}
-        sliceWidth={sliceWidth}
-      />
-
-      {focusPoints.length > 0 ? (
-        <PointCloud
-          points={focusPoints}
-          zScale={zScale}
-          pointSize={pointSize * 1.05}
-          onPick={onPick}
-          onHover={onHover}
-          startPoint={startPoint}
-          endPoint={endPoint}
-          focusWidth={focusWidth}
-          sliceWidth={sliceWidth}
-        />
-      ) : null}
-    </>
+    <PointCloud
+      points={visiblePoints}
+      zScale={zScale}
+      pointSize={pointSize}
+      onPick={onPick}
+      onHover={onHover}
+      startPoint={startPoint}
+      endPoint={endPoint}
+      focusWidth={focusWidth}
+      sliceWidth={sliceWidth}
+    />
   );
 }
 function Marker({
@@ -1082,6 +1090,10 @@ if (viewMode === "top") {
   );
 }
 export default function PointCloudCanvas({
+  leftWidth,
+rightWidth,
+leftCollapsed,
+rightCollapsed,
   points,
   focusPoints,
   startPoint,
@@ -1115,6 +1127,10 @@ export default function PointCloudCanvas({
   onResetMeasuredPoints,
   reliefSteps,
 }: {
+  leftWidth: number;
+rightWidth: number;
+leftCollapsed: boolean;
+rightCollapsed: boolean;
   points: Point3[];
   focusPoints: Point3[];
   reliefSteps: number;
@@ -1185,7 +1201,6 @@ export default function PointCloudCanvas({
         />
 <AdaptivePointCloud
   points={points}
-  focusPoints={focusPoints}
   zScale={zScale}
   pointSize={pointSize}
   onPick={onPickPoint}
@@ -1194,6 +1209,10 @@ export default function PointCloudCanvas({
   endPoint={endPoint}
   focusWidth={focusWidth}
   sliceWidth={sliceWidth}
+  leftWidth={leftWidth}
+  rightWidth={rightWidth}
+  leftCollapsed={leftCollapsed}
+  rightCollapsed={rightCollapsed}
 />
 
         {startPoint ? (
