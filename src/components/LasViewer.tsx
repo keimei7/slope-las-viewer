@@ -1256,7 +1256,7 @@ setIsPinned(false);
     <div className="relative h-screen w-screen overflow-hidden bg-slate-950 text-slate-100">
 <PointCloudCanvas
   onResetMeasuredPoints={resetMeasuredPointsOnly}
- points={displayPoints}
+points={points}
   startPoint={startPoint}
   endPoint={endPoint}
   onPickPoint={handlePick}
@@ -1734,7 +1734,7 @@ step={0.02}
               </div>
 
            <div className="mt-3 text-xs text-slate-400">
-  表示中: {displayPoints.length.toLocaleString()} / 元点群: {points.length.toLocaleString()} 点
+  元点群: {points.length.toLocaleString()} 点
 </div>
             </div>
 
