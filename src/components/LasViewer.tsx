@@ -1482,19 +1482,19 @@ setHoverSnapPoint(null);
 
   <input
     type="range"
-    min={0.01}
+    min={0.0}
     max={0.5}
     step={0.005}
     value={searchRadius}
     onChange={(e) =>
-      setSearchRadius(clamp(Number(e.target.value), 0.01, 0.5))
+      setSearchRadius(clamp(Number(e.target.value), 0.0, 0.5))
     }
     className="mt-1 w-full"
   />
 
-  <div className="mt-1 text-[11px] text-slate-500">
-    分割数と比較して、小さすぎると浮きやすく大きすぎると不安定になります
-  </div>
+ <div className="mt-1 text-[11px] text-slate-500">
+  分割数と近傍探索半径を小さくすると直線距離に近づき、大きくするにつれてテープが断面に沿います。大きくしすぎると不安定になります。
+</div>
 </div>
   <div className="mt-3">
     <label className="block text-xs text-slate-300">
