@@ -1148,14 +1148,8 @@ export default function PointCloudCanvas({
   onHoverTriangle: (triangleId: string | null) => void;
   savedTriangles: SavedTriangle[];
 }) {
-  const { camera, size } = useThree();
 
-const pixelLODPoints = useMemo(() => {
-  if (points.length > 1500000) {
-    return buildPixelLOD(points.filter((_, i) => i % 2 === 0), camera, size, 1.5);
-  }
-  return buildPixelLOD(points, camera, size, 1.5);
-}, [points, camera, size]);
+
 
   const bounds = useMemo(() => computeBounds(points), [points]);
 
