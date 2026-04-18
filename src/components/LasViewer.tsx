@@ -1011,8 +1011,8 @@ const effectiveSearchRadius = useMemo(() => {
 }, [searchRadius, pointSize]);
 const sampleTerrain = useMemo(() => {
   return (x: number, y: number) => {
-    const radius = Math.max(sliceWidth * 2.0, 0.02);
-    const r2 = radius * radius;
+    const r = Math.max(sliceWidth * 3, 0.03);
+    const r2 = r * r;
 
     const zs: number[] = [];
 
@@ -1021,19 +1021,17 @@ const sampleTerrain = useMemo(() => {
       const dy = p.y - y;
       const d2 = dx * dx + dy * dy;
 
-      if (d2 > r2) continue;
-      zs.push(p.z);
+      if (d2 < r2) zs.push(p.z);
     }
 
-    if (zs.length === 0) {
-      return { z: null };
-    }
+    if (zs.length === 0) return { z: null };
 
-    zs.sort((a, b) => b - a);
+    zs.sort((a, b) => a - b);
 
-    return {
-      z: zs[Math.floor(zs.length * 0.15)] ?? zs[0] ?? null,
-    };
+    // 中央値（ここ重要）
+    const mid = zs[Math.floor(zs.length * 0.5)];
+
+    return { z: mid };
   };
 }, [points, sliceWidth]);
 const tapePoints = useMemo(() => {

@@ -107,6 +107,12 @@ export function buildTapeSegmentPath(
       );
 
       let updated = add(curr, add(fixPrev, fixNext));
+      const prevZ = curr.z;
+const maxDeltaZ = 0.15; // ←これ重要
+
+if (Math.abs(updated.z - prevZ) > maxDeltaZ) {
+  updated.z = prevZ + Math.sign(updated.z - prevZ) * maxDeltaZ;
+}
       const anchor = base && base[i] ? base[i] : null;
 
       const moveDx = updated.x - curr.x;
@@ -137,17 +143,20 @@ export function buildTapeSegmentPath(
          const terrain = sampleTerrain(updated.x, updated.y);
 
       if (terrain.z !== null) {
-        const t = i / segments;
-        const centerFactor = 1 - Math.abs(t - 0.5) * 2;
-        const grip = lerp(endGrip, cling, centerFactor);
-        const skin = 0.003;
+       const t = i / segments;
+const base = lerpVec3(start, end, t);
 
-        if (updated.z < terrain.z + skin) {
-          updated.z = terrain.z + skin;
-        } else {
-          updated.z = lerp(updated.z, terrain.z + skin, grip);
-        }
-      }
+// 20%だけ戻す
+updated.x = updated.x * 0.8 + base.x * 0.2;
+updated.y = updated.y * 0.8 + base.y * 0.2;
+
+     if (terrain.z !== null) {
+  const skin = 0.003;
+
+  if (updated.z < terrain.z + skin) {
+    updated.z = terrain.z + skin;
+  }
+}
 
       nodes[i] = updated;
     }
