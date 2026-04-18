@@ -156,6 +156,7 @@ function pointToSegmentMetrics2D(
 
 function PointCloud({
   points,
+  bounds,
   zScale,
   pointSize,
   onPick,
@@ -166,6 +167,7 @@ function PointCloud({
   sliceWidth,
 }: {
   points: Point3[];
+  bounds: ReturnType<typeof computeBounds>;
   zScale: number;
   pointSize: number;
   onPick: (point: PickedPoint) => void;
@@ -175,7 +177,6 @@ function PointCloud({
   focusWidth: number;
   sliceWidth: number;
 }) {
-  const bounds = useMemo(() => computeBounds(points), [points]);
 
   const geometry = useMemo(() => {
     const g = new THREE.BufferGeometry();
@@ -371,19 +372,20 @@ function AdaptivePointCloud({
     rightCollapsed,
   ]);
 
-  return (
-    <PointCloud
-      points={visiblePoints}
-      zScale={zScale}
-      pointSize={pointSize}
-      onPick={onPick}
-      onHover={onHover}
-      startPoint={startPoint}
-      endPoint={endPoint}
-      focusWidth={focusWidth}
-      sliceWidth={sliceWidth}
-    />
-  );
+ return (
+  <PointCloud
+    points={visiblePoints}
+    bounds={bounds}
+    zScale={zScale}
+    pointSize={pointSize}
+    onPick={onPick}
+    onHover={onHover}
+    startPoint={startPoint}
+    endPoint={endPoint}
+    focusWidth={focusWidth}
+    sliceWidth={sliceWidth}
+  />
+);
 }
 function Marker({
   point,
@@ -1171,8 +1173,9 @@ rightCollapsed: boolean;
           args={[gridSize, 40, "#1e293b", "#0f172a"]}
           rotation={[Math.PI / 2, 0, 0]}
         />
-<AdaptivePointCloud
+<PointCloud
   points={points}
+  bounds={bounds}
   zScale={zScale}
   pointSize={pointSize}
   onPick={onPickPoint}
@@ -1181,10 +1184,6 @@ rightCollapsed: boolean;
   endPoint={endPoint}
   focusWidth={focusWidth}
   sliceWidth={sliceWidth}
-  leftWidth={leftWidth}
-  rightWidth={rightWidth}
-  leftCollapsed={leftCollapsed}
-  rightCollapsed={rightCollapsed}
 />
 
         {startPoint ? (
