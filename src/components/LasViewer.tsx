@@ -1,5 +1,5 @@
 "use client";
-
+import { buildTapeSegmentPath, computePolylineLength } from "@/lib/tape/tape-segment";
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { load } from "@loaders.gl/core";
 import { LASLoader } from "@loaders.gl/las";
@@ -871,6 +871,8 @@ function handlePrintDevelopment() {
 }
 export default function LasViewer() {
 
+  const [tapeSolverMode, setTapeSolverMode] = useState<"legacy" | "physics">("legacy");
+
   const [points, setPoints] = useState<Point3[]>([]);
   const [showInitialPointLimitOverlay, setShowInitialPointLimitOverlay] = useState(false);
   const [fileName, setFileName] = useState("");
@@ -1007,8 +1009,43 @@ const displayPoints = useMemo(() => {
 const effectiveSearchRadius = useMemo(() => {
   return Math.max(searchRadius, pointSize * 2.5);
 }, [searchRadius, pointSize]);
+const sampleTerrain = useMemo(() => {
+  return (x: number, y: number) => {
+    let best: Point3 | null = null;
+    let bestD2 = Infinity;
 
+    for (const p of points) {
+      const dx = p.x - x;
+      const dy = p.y - y;
+      const d2 = dx * dx + dy * dy;
+
+      if (d2 < bestD2) {
+        bestD2 = d2;
+        best = p;
+      }
+    }
+
+    return { z: best ? best.z : null };
+  };
+}, [points]);
 const tapePoints = useMemo(() => {
+  if (!startPoint || !endPoint) return [];
+
+  if (tapeSolverMode === "physics") {
+    return buildTapeSegmentPath(
+      startPoint,
+      endPoint,
+      sampleTerrain,
+      {
+        segments: Math.max(divisionCount * 3, 12),
+        iterations: 8,
+        cling: 0.28,
+        tension: 0.78,
+        endGrip: 0.88,
+      },
+    );
+  }
+
   return computeTapeSamplePoints(
     points,
     startPoint,
@@ -1026,17 +1063,13 @@ const tapePoints = useMemo(() => {
   effectiveSearchRadius,
   sliceWidth,
   guideMode,
+  tapeSolverMode,
+  sampleTerrain,
 ]);
   const tapeDistance = useMemo(() => {
-    if (tapePoints.length < 2) return null;
-
-    let total = 0;
-    for (let i = 1; i < tapePoints.length; i++) {
-      total += distance3D(tapePoints[i - 1], tapePoints[i]);
-    }
-    return total;
-  }, [tapePoints]);
-
+  if (tapePoints.length < 2) return null;
+  return computePolylineLength(tapePoints);
+}, [tapePoints]);
 function handlePick(point: PickedPoint) {
   const snapped = hoverSnapPoint ?? snapToExistingPoint(point, savedLines);
 
@@ -1587,7 +1620,34 @@ setHoverSnapPoint(null);
       断面スライス幅: 1 cm
     </label>
   </div>
+<div className="mt-3">
+  <label className="block text-xs text-slate-300">テープ補間方式</label>
+  <div className="mt-2 flex gap-2">
+    <button
+      type="button"
+      onClick={() => setTapeSolverMode("legacy")}
+      className={`rounded-lg border px-3 py-1.5 text-xs ${
+        tapeSolverMode === "legacy"
+          ? "border-cyan-400 bg-cyan-400/20 text-cyan-100"
+          : "border-white/10 bg-white/5 text-slate-200 hover:bg-white/10"
+      }`}
+    >
+      既存
+    </button>
 
+    <button
+      type="button"
+      onClick={() => setTapeSolverMode("physics")}
+      className={`rounded-lg border px-3 py-1.5 text-xs ${
+        tapeSolverMode === "physics"
+          ? "border-cyan-400 bg-cyan-400/20 text-cyan-100"
+          : "border-white/10 bg-white/5 text-slate-200 hover:bg-white/10"
+      }`}
+    >
+      物理テープ
+    </button>
+  </div>
+</div>
   <div className="mt-3 text-xs text-slate-400">
     サンプル点数: {tapePoints.length}
   </div>
