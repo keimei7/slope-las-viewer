@@ -67,6 +67,26 @@ type ConnectedFlatDevelopment = {
   minY: number;
   maxY: number;
 };
+
+function voxelDownsample(points: Point3[], voxelSize: number) {
+  if (points.length === 0) return points;
+
+  const map = new Map<string, Point3>();
+
+  for (const p of points) {
+    const ix = Math.floor(p.x / voxelSize);
+    const iy = Math.floor(p.y / voxelSize);
+    const iz = Math.floor(p.z / voxelSize);
+
+    const key = `${ix}_${iy}_${iz}`;
+
+    if (!map.has(key)) {
+      map.set(key, p);
+    }
+  }
+
+  return Array.from(map.values());
+}
 function toPointsFromLasData(data: unknown): Point3[] {
   const rows: Point3[] = [];
 
@@ -866,6 +886,9 @@ const [rotateSpeed, setRotateSpeed] = useState(0.5);  // ↓ゆっくり回る
 const [zoomSpeed, setZoomSpeed] = useState(0.7);      // ↓ズーム暴れ防止
 const [panSpeed, setPanSpeed] = useState(0.5);        // ↓移動も落ち着く
 const [reliefSteps, setReliefSteps] = useState(0);
+
+const [voxelBase, setVoxelBase] = useState(0.05);
+
 const isSamePoint = (a: PickedPoint, b: PickedPoint, eps = 0.001) => {
   return (
     Math.abs(a.x - b.x) < eps &&
@@ -902,19 +925,24 @@ const totalTriangleArea = useMemo(() => {
 }, [savedTriangles]);
 
 const displayPoints = useMemo(() => {
-  if (points.length <= maxDisplayPoints) {
+  if (points.length === 0) return [];
+
+  // 🔥 点数多い時だけ発動
+  if (points.length < maxDisplayPoints) {
     return points;
   }
 
-  const step = Math.ceil(points.length / maxDisplayPoints);
-  const sampled: Point3[] = [];
+  // 👉 点数に応じて自動で粗さ調整
+  const density = points.length / maxDisplayPoints;
 
-  for (let i = 0; i < points.length; i += step) {
-    sampled.push(points[i]);
-  }
+  // 🔥 voxelサイズ（これが超重要）
+const voxelSize = Math.pow(density, 1 / 3) * voxelBase;
 
-  return sampled;
+  const downsampled = voxelDownsample(points, voxelSize);
+
+  return downsampled;
 }, [points, maxDisplayPoints]);
+
 
   const stats = useMemo(() => {
     if (points.length === 0) return null;
@@ -1694,6 +1722,20 @@ step={0.02}
     step={0.01}
     value={cameraLift}
     onChange={(e) => setCameraLift(Number(e.target.value))}
+    className="mt-1 w-full"
+  />
+</div>
+<div className="mt-3">
+  <label className="block text-xs text-slate-300">
+    軽量化強度: {voxelBase.toFixed(3)}
+  </label>
+  <input
+    type="range"
+    min={0.01}
+    max={0.2}
+    step={0.005}
+    value={voxelBase}
+    onChange={(e) => setVoxelBase(Number(e.target.value))}
     className="mt-1 w-full"
   />
 </div>
