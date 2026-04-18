@@ -1081,6 +1081,7 @@ if (viewMode === "top") {
   );
 }
 export default function PointCloudCanvas({
+  onUserInteraction,
   leftWidth,
 rightWidth,
 leftCollapsed,
@@ -1117,6 +1118,7 @@ rightCollapsed,
   onResetMeasuredPoints,
   reliefSteps,
 }: {
+ onUserInteraction?: () => void;
   leftWidth: number;
 rightWidth: number;
 leftCollapsed: boolean;
@@ -1163,15 +1165,21 @@ rightCollapsed: boolean;
     () => Math.max(bounds.sx, bounds.sy, 200) * 2.5,
     [bounds],
   );
-  return (
-    <main className="absolute inset-0">
-     <Canvas
-  className="h-full w-full"
-  camera={{ position: [0, 0, 200], fov: 40, near: 0.1, far: 200000 }}
-  onCreated={({ gl, raycaster }) => {
-    gl.setClearColor("#020617");
-    raycaster.params.Points = { threshold: hitThreshold };
-  }}
+ return (
+  <main className="absolute inset-0">
+    <Canvas
+      className="h-full w-full"
+      camera={{ position: [0, 0, 200], fov: 40, near: 0.1, far: 200000 }}
+      onCreated={({ gl, raycaster }) => {
+        gl.setClearColor("#020617");
+        raycaster.params.Points = { threshold: hitThreshold };
+      }}
+      onPointerDown={() => {
+        onUserInteraction?.();
+      }}
+      onWheel={() => {
+        onUserInteraction?.();
+      }}
 
   // 👇 これ追加
   onContextMenu={(e) => {
