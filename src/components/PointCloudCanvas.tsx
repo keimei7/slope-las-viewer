@@ -153,10 +153,8 @@ function pointToSegmentMetrics2D(
     t,
   };
 }
-
 function PointCloud({
   points,
-  pickPoints,
   bounds,
   zScale,
   pointSize,
@@ -168,7 +166,6 @@ function PointCloud({
   sliceWidth,
 }: {
   points: Point3[];
-  pickPoints: Point3[];
   bounds: ReturnType<typeof computeBounds>;
   zScale: number;
   pointSize: number;
@@ -179,39 +176,7 @@ function PointCloud({
   focusWidth: number;
   sliceWidth: number;
 }) {
-const { camera } = useThree();
 
-function pickNearestPointFromMouse(mouse: { x: number; y: number }) {
-  let best: Point3 | null = null;
-  let bestDist = Infinity;
-
-  const vec = new THREE.Vector3();
-
-  for (const p of pickPoints) {
-    vec.set(
-      p.x - bounds.cx,
-      p.y - bounds.cy,
-      (p.z - bounds.cz) * zScale,
-    ).project(camera);
-
-    const dx = vec.x - mouse.x;
-    const dy = vec.y - mouse.y;
-    const d = dx * dx + dy * dy;
-
-    if (d < bestDist) {
-      bestDist = d;
-      best = p;
-    }
-  }
-
-  if (!best) return null;
-
-  return {
-    x: best.x,
-    y: best.y,
-    z: best.z,
-  };
-}
   const geometry = useMemo(() => {
     const g = new THREE.BufferGeometry();
     const positions = new Float32Array(points.length * 3);
@@ -275,19 +240,36 @@ function pickNearestPointFromMouse(mouse: { x: number; y: number }) {
      onPointerMove={(event) => {
   event.stopPropagation();
 
-  const picked = pickNearestPointFromMouse(event.pointer);
-  onHover(picked);
+  if (typeof event.index !== "number") {
+    onHover(null);
+    return;
+  }
+
+  const picked = points[event.index];
+  if (!picked) {
+    onHover(null);
+    return;
+  }
+
+  onHover({
+    x: picked.x,
+    y: picked.y,
+    z: picked.z,
+  });
 }}
-      onPointerOut={() => {
-        onHover(null);
-      }}
-    onClick={(event) => {
+      onClick={(event) => {
   event.stopPropagation();
 
-  const picked = pickNearestPointFromMouse(event.pointer);
+  if (typeof event.index !== "number") return;
+
+  const picked = points[event.index];
   if (!picked) return;
 
-  onPick(picked);
+  onPick({
+    x: picked.x,
+    y: picked.y,
+    z: picked.z,
+  });
 }}
     >
       <pointsMaterial
@@ -389,7 +371,6 @@ function AdaptivePointCloud({
  return (
   <PointCloud
     points={visiblePoints}
-    pickPoints={points}
     bounds={bounds}
     zScale={zScale}
     pointSize={pointSize}
