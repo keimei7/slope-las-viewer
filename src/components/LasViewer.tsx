@@ -844,9 +844,9 @@ const [guideMode, setGuideMode] = useState<GuideMode>("free");
 const [guideAngleDeg, setGuideAngleDeg] = useState<number | null>(null);
 
   const [zScale, setZScale] = useState(1);
- const [pointSize, setPointSize] = useState(0.016);
+ const [pointSize, setPointSize] = useState(0.01);
 const [lineWidthScale, setLineWidthScale] = useState(2);
-const [hitThreshold, setHitThreshold] = useState(0.05);
+const [hitThreshold, setHitThreshold] = useState(0.015);
 
   const [viewMode, setViewMode] = useState<ViewMode>("top");
   const [viewResetKey, setViewResetKey] = useState(0);
