@@ -253,13 +253,14 @@ const corridorPoints = sourcePoints.filter((p) => {
     const targetY = ay + uy * targetAlong;
     const targetZ = az + ((bz - az) * i) / divisionCount;
 
-    const candidates: Array<{
-      point: Point3;
-      alongError: number;
-      perpDist: number;
-      targetZError: number;
-      score: number;
-    }> = [];
+  const candidates: Array<{
+  point: Point3;
+  alongError: number;
+  perpDist: number;
+  targetZError: number;
+  target3DDist: number;
+  score: number;
+}> = [];
 
 for (const p of corridorPoints) {
         const px = p.x - ax;
@@ -291,31 +292,38 @@ for (const p of corridorPoints) {
 
   if (jumpDist > Math.max(step * 1.8, searchRadius * 1.5)) continue;
 }
+const targetZError = Math.abs(p.z - targetZ);
 
-      const targetZError = Math.abs(p.z - targetZ);
+const dx3 = p.x - targetX;
+const dy3 = p.y - targetY;
+const dz3 = p.z - targetZ;
+const target3DDist = Math.sqrt(dx3 * dx3 + dy3 * dy3 + dz3 * dz3);
 
-      const perpWeight =
-        guideMode === "horizontal"
-          ? 0.9
-          : guideMode === "angled"
-            ? 0.88
-            : 0.78;
+const perpWeight =
+  guideMode === "horizontal"
+    ? 0.72
+    : guideMode === "angled"
+      ? 0.68
+      : 0.62;
 
-      const alongWeight = guideMode === "vertical" ? 0.12 : 0.08;
-      const zWeight = 1 - perpWeight - alongWeight;
+const alongWeight = guideMode === "vertical" ? 0.10 : 0.08;
+const zWeight = 0.10;
+const shapeWeight = 1 - perpWeight - alongWeight - zWeight;
 
-      const score =
-        perpDist * perpWeight +
-        alongError * alongWeight +
-        targetZError * zWeight;
+const score =
+  perpDist * perpWeight +
+  alongError * alongWeight +
+  targetZError * zWeight +
+  target3DDist * shapeWeight;
 
-      candidates.push({
-        point: p,
-        alongError,
-        perpDist,
-        targetZError,
-        score,
-      });
+candidates.push({
+  point: p,
+  alongError,
+  perpDist,
+  targetZError,
+  target3DDist,
+  score,
+});
     }
 
     if (candidates.length === 0) {
@@ -396,6 +404,11 @@ if (top.length > 1) {
       const ddy = candidate.point.y - prevSample.y;
       const stepDist = Math.sqrt(ddx * ddx + ddy * ddy);
       continuityPenalty += Math.abs(stepDist - step) * 0.8;
+      const midTargetZ =
+  targetZ;
+
+const floatPenalty = Math.abs(candidate.point.z - midTargetZ);
+continuityPenalty += floatPenalty * 1.8;
     }
 
     if (prevSample && prevPrevSample) {
