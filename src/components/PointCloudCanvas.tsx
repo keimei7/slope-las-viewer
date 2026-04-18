@@ -311,7 +311,98 @@ function PointCloud({
     </points>
   );
 }
+function AdaptivePointCloud({
+  points,
+  focusPoints,
+  zScale,
+  pointSize,
+  onPick,
+  onHover,
+  startPoint,
+  endPoint,
+  focusWidth,
+  sliceWidth,
+}: {
+  points: Point3[];
+  focusPoints: Point3[];
+  zScale: number;
+  pointSize: number;
+  onPick: (point: PickedPoint) => void;
+  onHover: (point: PickedPoint | null) => void;
+  startPoint: PickedPoint | null;
+  endPoint: PickedPoint | null;
+  focusWidth: number;
+  sliceWidth: number;
+}) {
+  const { camera, size } = useThree();
 
+  const pixelLODPoints = useMemo(() => {
+    const buildPixelLOD = (
+      sourcePoints: Point3[],
+      camera: THREE.Camera,
+      size: { width: number; height: number },
+      density: number = 1.5,
+    ) => {
+      const projected = new Map<string, Point3>();
+      const vec = new THREE.Vector3();
+
+      for (const p of sourcePoints) {
+        vec.set(p.x, p.y, p.z).project(camera);
+
+        const x = Math.floor(((vec.x * 0.5 + 0.5) * size.width) / density);
+        const y = Math.floor(((vec.y * -0.5 + 0.5) * size.height) / density);
+
+        const key = `${x}_${y}`;
+        if (!projected.has(key)) {
+          projected.set(key, p);
+        }
+      }
+
+      return Array.from(projected.values());
+    };
+
+    if (points.length > 1500000) {
+      return buildPixelLOD(
+        points.filter((_, i) => i % 2 === 0),
+        camera,
+        size,
+        1.5,
+      );
+    }
+
+    return buildPixelLOD(points, camera, size, 1.5);
+  }, [points, camera, size]);
+
+  return (
+    <>
+      <PointCloud
+        points={pixelLODPoints}
+        zScale={zScale}
+        pointSize={pointSize}
+        onPick={onPick}
+        onHover={onHover}
+        startPoint={startPoint}
+        endPoint={endPoint}
+        focusWidth={focusWidth}
+        sliceWidth={sliceWidth}
+      />
+
+      {focusPoints.length > 0 ? (
+        <PointCloud
+          points={focusPoints}
+          zScale={zScale}
+          pointSize={pointSize * 1.05}
+          onPick={onPick}
+          onHover={onHover}
+          startPoint={startPoint}
+          endPoint={endPoint}
+          focusWidth={focusWidth}
+          sliceWidth={sliceWidth}
+        />
+      ) : null}
+    </>
+  );
+}
 function Marker({
   point,
   color,
@@ -848,7 +939,6 @@ function TriangleMesh({
   );
 }
 function CameraRig({
-  onDistanceChange,
   points,
   zScale,
   viewMode,
@@ -858,7 +948,6 @@ function CameraRig({
   panSpeed,
   cameraLift,
 }: {
-  onDistanceChange: (distance: number) => void;
   points: Point3[];
   zScale: number;
   viewMode: ViewMode;
@@ -922,7 +1011,6 @@ useEffect(() => {
     controls.update();
 
     e.preventDefault();
-    onDistanceChange(camera.position.distanceTo(controls.target));
   };
 
   const onPointerUp = () => {
@@ -939,7 +1027,7 @@ useEffect(() => {
     dom.removeEventListener("pointermove", onPointerMove);
     window.removeEventListener("pointerup", onPointerUp);
   };
-}, [maxSpan, onDistanceChange]);
+}, [maxSpan,]);
 
 
   useEffect(() => {
@@ -964,8 +1052,8 @@ if (viewMode === "top") {
 }
 
    controls.update();
-  onDistanceChange(camera.position.distanceTo(controls.target));
-}, [points, maxSpan, targetZ, viewMode, viewResetKey, onDistanceChange]);
+ 
+}, [points, maxSpan, targetZ, viewMode, viewResetKey, ]);
 
   return (
     <OrbitControls
@@ -1071,13 +1159,6 @@ const pixelLODPoints = useMemo(() => {
 
   const bounds = useMemo(() => computeBounds(points), [points]);
 
-  const [lodLevel, setLodLevel] = useState<"near" | "mid" | "far">("mid");
-
-  const lodPoints = useMemo(() => {
-  if (lodLevel === "near") return points;
-  if (lodLevel === "mid") return points.filter((_, i) => i % 1.2 < 1);
-  return points.filter((_, i) => i % 1.8 < 1);
-}, [points, lodLevel]);
 
   const gridSize = useMemo(
     () => Math.max(bounds.sx, bounds.sy, 200) * 2.5,
@@ -1108,8 +1189,9 @@ const pixelLODPoints = useMemo(() => {
           args={[gridSize, 40, "#1e293b", "#0f172a"]}
           rotation={[Math.PI / 2, 0, 0]}
         />
-<PointCloud
-points={pixelLODPoints}
+<AdaptivePointCloud
+  points={points}
+  focusPoints={focusPoints}
   zScale={zScale}
   pointSize={pointSize}
   onPick={onPickPoint}
@@ -1119,20 +1201,6 @@ points={pixelLODPoints}
   focusWidth={focusWidth}
   sliceWidth={sliceWidth}
 />
-
-{focusPoints.length > 0 ? (
-  <PointCloud
-    points={focusPoints}
-    zScale={zScale}
-    pointSize={pointSize * 1.05}
-    onPick={onPickPoint}
-    onHover={onHoverPoint}
-    startPoint={startPoint}
-    endPoint={endPoint}
-    focusWidth={focusWidth}
-    sliceWidth={sliceWidth}
-  />
-) : null}
 
         {startPoint ? (
           <Marker
@@ -1240,16 +1308,6 @@ points={pixelLODPoints}
   zoomSpeed={zoomSpeed}
   panSpeed={panSpeed}
   cameraLift={cameraLift}
-  onDistanceChange={(distance) => {
-    const span = Math.max(bounds.sx, bounds.sy, bounds.sz * zScale, 1);
-   if (distance < span * 2.0) {
-  setLodLevel("near");
-} else if (distance < span * 4.0) {
-  setLodLevel("mid");
-} else {
-  setLodLevel("far");
-}
-  }}
 />
       </Canvas>
     </main>
