@@ -1471,23 +1471,31 @@ setHoverSnapPoint(null);
     />
   </div>
 
-  <div className="mt-3">
-    <label className="block text-xs text-slate-300">
-      近傍探索半径: {(effectiveSearchRadius * 100).toFixed(0)} cm
-    </label>
-    <input
-      type="range"
-      min={0}
-      max={0.5}
-      step={0.002}
-      value={searchRadius}
-      onChange={(e) =>
-        setSearchRadius(clamp(Number(e.target.value), 0, 0.1))
-      }
-      className="mt-1 w-full"
-    />
-  </div>
+ <div className="mt-3">
+  <label className="block text-xs text-slate-300">
+    近傍探索半径: {
+      effectiveSearchRadius < 1
+        ? `${(effectiveSearchRadius * 100).toFixed(0)} cm`
+        : `${effectiveSearchRadius.toFixed(2)} m`
+    }
+  </label>
 
+  <input
+    type="range"
+    min={0.01}
+    max={0.5}
+    step={0.005}
+    value={searchRadius}
+    onChange={(e) =>
+      setSearchRadius(clamp(Number(e.target.value), 0.01, 0.5))
+    }
+    className="mt-1 w-full"
+  />
+
+  <div className="mt-1 text-[11px] text-slate-500">
+    分割数と比較して、小さすぎると浮きやすく大きすぎると不安定になります
+  </div>
+</div>
   <div className="mt-3">
     <label className="block text-xs text-slate-300">
       断面スライス幅: 1 cm
