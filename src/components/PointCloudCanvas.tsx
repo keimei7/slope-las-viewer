@@ -164,9 +164,6 @@ function PointCloud({
   endPoint,
   focusWidth,
   sliceWidth,
-  reliefColorEnabled,
-  reliefStrength,
-  reliefSteps,
 }: {
   points: Point3[];
   zScale: number;
@@ -177,9 +174,6 @@ function PointCloud({
   endPoint: PickedPoint | null;
   focusWidth: number;
   sliceWidth: number;
-  reliefColorEnabled: boolean;
-  reliefStrength: number;
-  reliefSteps: number;
 }) {
   const bounds = useMemo(() => computeBounds(points), [points]);
 
@@ -196,73 +190,38 @@ function PointCloud({
       positions[i * 3] = p.x - bounds.cx;
       positions[i * 3 + 1] = p.y - bounds.cy;
       positions[i * 3 + 2] = (p.z - bounds.cz) * zScale;
-let r = 0.76;
-let gCol = 0.82;
-let b = 0.9;
 
-// ===== 等高線カラー =====
-const zMin = bounds.minZ;
-const zMax = bounds.maxZ;
-const zRange = Math.max(zMax - zMin, 0.0001);
+      let r = 0.76;
+      let gCol = 0.82;
+      let b = 0.9;
 
-let t = (p.z - zMin) / zRange;
+      if (useLine && startPoint && endPoint) {
+        const { distance } = pointToSegmentMetrics2D(
+          p.x,
+          p.y,
+          startPoint.x,
+          startPoint.y,
+          endPoint.x,
+          endPoint.y,
+        );
 
-if (reliefSteps > 0) {
-  const step = 1 / reliefSteps;
-  t = Math.floor(t / step) * step;
-}
+        const withinSlice = distance <= sliceWidth;
+        const withinFocus = distance <= focusWidth;
 
-const getTopoColor = (tt: number) => {
-  if (tt < 0.2) return { r: 0.2, g: 0.3, b: 0.8 };
-  if (tt < 0.4) return { r: 0.2, g: 0.7, b: 0.3 };
-  if (tt < 0.6) return { r: 0.9, g: 0.8, b: 0.3 };
-  if (tt < 0.8) return { r: 0.8, g: 0.4, b: 0.2 };
-  return { r: 1.0, g: 1.0, b: 1.0 };
-};
-
-const col = getTopoColor(t);
-r = col.r;
-gCol = col.g;
-b = col.b;
-
-if (reliefSteps > 0) {
-  const scaled = t * reliefSteps;
-  const edge = Math.abs(scaled - Math.round(scaled));
-
-  if (edge < 0.06) {
-    r *= 0.25;
-    gCol *= 0.25;
-    b *= 0.25;
-  }
-}
-
-if (useLine && startPoint && endPoint) {
-  const { distance } = pointToSegmentMetrics2D(
-    p.x,
-    p.y,
-    startPoint.x,
-    startPoint.y,
-    endPoint.x,
-    endPoint.y,
-  );
-
-  const withinSlice = distance <= sliceWidth;
-  const withinFocus = distance <= focusWidth;
-
-  if (withinSlice) {
-    r = 1.0;
-    gCol = 0.78;
-    b = 0.35;
-  } else if (withinFocus) {
-    r = 0.92;
-    gCol = 0.96;
-    b = 1.0;
-  } else {
-    r = 0.2;
-    gCol = 0.24;
-    b = 0.31;
-  }
-}
+        if (withinSlice) {
+          r = 1.0;
+          gCol = 0.78;
+          b = 0.35;
+        } else if (withinFocus) {
+          r = 0.92;
+          gCol = 0.96;
+          b = 1.0;
+        } else {
+          r = 0.2;
+          gCol = 0.24;
+          b = 0.31;
+        }
+      }
 
       colors[i * 3] = r;
       colors[i * 3 + 1] = gCol;
@@ -273,7 +232,7 @@ if (useLine && startPoint && endPoint) {
     g.setAttribute("color", new THREE.BufferAttribute(colors, 3));
     g.computeBoundingSphere();
     return g;
-}, [points, bounds, zScale, startPoint, endPoint, focusWidth, sliceWidth, reliefSteps]);
+  }, [points, bounds, zScale, startPoint, endPoint, focusWidth, sliceWidth]);
 
   return (
     <points
@@ -564,35 +523,6 @@ function HoverTriangleDetails({
   );
 }
 
-function SavedLineLabel({
-  line,
-  bounds,
-  zScale,
-}: {
-  line: SavedLine;
-  bounds: ReturnType<typeof computeBounds>;
-  zScale: number;
-}) {
-  const anchor =
-    line.tapePoints[Math.floor(line.tapePoints.length / 2)] ?? line.start;
-
-  return (
-    <Html
-  position={[
-    anchor.x - bounds.cx,
-    anchor.y - bounds.cy,
-    (anchor.z - bounds.cz) * zScale + 0.08,
-  ]}
-  center
-  zIndexRange={[0, 0]}
-  style={{ pointerEvents: "none" }}
->
-      <div className="rounded bg-black/60 px-1 py-0.5 text-[8px] text-white/90 whitespace-nowrap shadow">
-        {line.name} / {line.surfaceLength.toFixed(2)}m
-      </div>
-    </Html>
-  );
-}
 
 function SavedLinesLayer({
   savedLines,
@@ -674,29 +604,7 @@ function HoverSnapMarker({
     </mesh>
   );
 }
-function FloatingResetButton({
-  visible,
-  onReset,
-}: {
-  visible: boolean;
-  onReset: () => void;
-}) {
-  if (!visible) return null;
 
-  return (
-    <Html position={[0, 0, 0]} fullscreen style={{ pointerEvents: "none" }}>
-      <div className="absolute bottom-6 left-1/2 -translate-x-1/2">
-        <button
-          type="button"
-          onClick={onReset}
-          className="pointer-events-auto rounded-full border border-white/15 bg-slate-900/80 px-4 py-2 text-sm text-slate-100 shadow-lg backdrop-blur hover:bg-slate-800/90"
-        >
-          測点リセット
-        </button>
-      </div>
-    </Html>
-  );
-}
 function GuidePreviewLine({
   startPoint,
   hoverPoint,
@@ -913,7 +821,6 @@ function TriangleMesh({
     </mesh>
   );
 }
-
 function CameraRig({
   points,
   zScale,
@@ -935,13 +842,14 @@ function CameraRig({
 }) {
   const controlsRef = useRef<any>(null);
   const dualZoomActiveRef = useRef(false);
-const lastYRef = useRef<number | null>(null);
+  const lastYRef = useRef<number | null>(null);
   const bounds = useMemo(() => computeBounds(points), [points]);
-  const maxSpan = Math.max(bounds.sx, bounds.sy, bounds.sz * zScale, 1);
-const zRange = bounds.maxZ - bounds.minZ;
 
-// 👇 カメラが見る高さ（0=地面 / 1=上）
-const worldTargetZ = bounds.minZ + zRange * cameraLift;
+  const maxSpan = Math.max(bounds.sx, bounds.sy, bounds.sz * zScale, 1);
+  const zRange = bounds.maxZ - bounds.minZ;
+  const worldTargetZ = bounds.minZ + zRange * cameraLift;
+  const targetZ = (worldTargetZ - bounds.cz) * zScale;
+
 useEffect(() => {
   const controls = controlsRef.current;
   if (!controls) return;
@@ -1004,8 +912,6 @@ useEffect(() => {
   };
 }, [maxSpan]);
 
-// 👇 Canvas座標系に変換（中心補正＋Zスケール）
-const targetZ = (worldTargetZ - bounds.cz) * zScale;
 
   useEffect(() => {
   const controls = controlsRef.current;
@@ -1078,8 +984,6 @@ export default function PointCloudCanvas({
   zoomSpeed,
   panSpeed,
   cameraLift,
-  reliefColorEnabled,
-  reliefStrength,
   zScale,
   pointSize,
   viewMode,
@@ -1093,8 +997,6 @@ export default function PointCloudCanvas({
   reliefSteps,
 }: {
   reliefSteps: number;
-  reliefColorEnabled: boolean;
-  reliefStrength: number;
   selectedLineIds: string[];
   lineWidthScale: number;
   hitThreshold: number;
@@ -1125,19 +1027,10 @@ export default function PointCloudCanvas({
   onHoverSavedLine: (lineId: string | null) => void;
   onHoverTriangle: (triangleId: string | null) => void;
   savedTriangles: SavedTriangle[];
-  
 }) {
+
   const bounds = useMemo(() => computeBounds(points), [points]);
-  const maxSpan = Math.max(bounds.sx, bounds.sy, bounds.sz * zScale, 1);
-
-// Z範囲
-const zRange = bounds.maxZ - bounds.minZ;
-
-// カメラが見る高さ（0=地面 / 1=上）
-const worldTargetZ = bounds.minZ + zRange * cameraLift;
-
-// three座標系に変換
-const targetZ = (worldTargetZ - bounds.cz) * zScale;
+ 
   const gridSize = useMemo(
     () => Math.max(bounds.sx, bounds.sy, 200) * 2.5,
     [bounds],
@@ -1169,7 +1062,6 @@ const targetZ = (worldTargetZ - bounds.cz) * zScale;
           rotation={[Math.PI / 2, 0, 0]}
         />
 <PointCloud
-reliefSteps={reliefSteps}
   points={points}
   zScale={zScale}
   pointSize={pointSize}
@@ -1179,8 +1071,6 @@ reliefSteps={reliefSteps}
   endPoint={endPoint}
   focusWidth={focusWidth}
   sliceWidth={sliceWidth}
-  reliefColorEnabled={reliefColorEnabled}
-  reliefStrength={reliefStrength}
 />
 
         {startPoint ? (

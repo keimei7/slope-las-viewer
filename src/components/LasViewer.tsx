@@ -176,28 +176,7 @@ function getTriangleVerticesFromLines(lines: SavedLine[]) {
   return unique;
 }
 
-// ② 2D展開
-function projectTriangleTo2D(a: Point3, b: Point3, c: Point3) {
-  const dist = (p1: Point3, p2: Point3) => {
-    const dx = p2.x - p1.x;
-    const dy = p2.y - p1.y;
-    const dz = p2.z - p1.z;
-    return Math.sqrt(dx * dx + dy * dy + dz * dz);
-  };
 
-  const AB = dist(a, b);
-  const AC = dist(a, c);
-  const BC = dist(b, c);
-
-  const cosC = (AC * AC + AB * AB - BC * BC) / (2 * AC * AB);
-  const sinC = Math.sqrt(Math.max(0, 1 - cosC * cosC));
-
-  return [
-    { x: 0, y: 0 },
-    { x: AB, y: 0 },
-    { x: cosC * AC, y: sinC * AC },
-  ];
-}
 function computeTapeSamplePoints(
   sourcePoints: Point3[],
   startPoint: PickedPoint | null,
@@ -673,322 +652,11 @@ function buildConnectedTriangleDevelopment(
     maxY,
   };
 }
-type DevPoint2D = {
-  x: number;
-  y: number;
-};
 
-type DevelopedTriangle = {
-  id: string;
-  name: string;
-  points: [DevPoint2D, DevPoint2D, DevPoint2D];
-  lineIds: [string, string, string];
-};
 
-type DevelopedEdge = {
-  lineId: string;
-  p1: DevPoint2D;
-  p2: DevPoint2D;
-  length: number;
-};
 
-function placeBaseTriangle(
-  lengths: [number, number, number],
-): [DevPoint2D, DevPoint2D, DevPoint2D] {
-  const [a, b, c] = lengths;
 
-  const A = { x: 0, y: 0 };
-  const B = { x: a, y: 0 };
 
-  const cosC = (a * a + b * b - c * c) / (2 * a * b);
-  const sinC = Math.sqrt(Math.max(0, 1 - cosC * cosC));
-
-  const C = {
-    x: cosC * b,
-    y: sinC * b,
-  };
-
-  return [A, B, C];
-}
-function placeAdjacentTriangle(
-  sharedP1: DevPoint2D,
-  sharedP2: DevPoint2D,
-  sharedLength: number,
-  otherLength1: number,
-  otherLength2: number,
-): DevPoint2D {
-  const dx = sharedP2.x - sharedP1.x;
-  const dy = sharedP2.y - sharedP1.y;
-  const baseLen = Math.sqrt(dx * dx + dy * dy);
-
-  const ux = dx / baseLen;
-  const uy = dy / baseLen;
-
-  const nx = -uy;
-  const ny = ux;
-
-  const cosTheta =
-    (sharedLength * sharedLength +
-      otherLength1 * otherLength1 -
-      otherLength2 * otherLength2) /
-    (2 * sharedLength * otherLength1);
-
-  const sinTheta = Math.sqrt(Math.max(0, 1 - cosTheta * cosTheta));
-
-  const px =
-    sharedP1.x +
-    ux * cosTheta * otherLength1 +
-    nx * sinTheta * otherLength1;
-
-  const py =
-    sharedP1.y +
-    uy * cosTheta * otherLength1 +
-    ny * sinTheta * otherLength1;
-
-  return { x: px, y: py };
-}
-function buildDevelopment(
-  triangles: SavedTriangle[],
-  lines: SavedLine[],
-): {
-  triangles: DevelopedTriangle[];
-  edges: DevelopedEdge[];
-} {
-  if (triangles.length === 0) {
-    return { triangles: [], edges: [] };
-  }
-
-  const lineMap = new Map<string, SavedLine>();
-  lines.forEach((l) => lineMap.set(l.id, l));
-
-  const lineToTriangles = new Map<string, string[]>();
-
-  for (const t of triangles) {
-    for (const lid of t.lineIds) {
-      if (!lineToTriangles.has(lid)) {
-        lineToTriangles.set(lid, []);
-      }
-      lineToTriangles.get(lid)!.push(t.id);
-    }
-  }
-
-  const placed = new Map<string, DevelopedTriangle>();
-
-  const base = triangles[0];
-
-  const baseLengths = base.edgeLengths;
-
-  const basePoints = placeBaseTriangle(baseLengths);
-
-  placed.set(base.id, {
-    id: base.id,
-    name: base.name,
-    points: basePoints,
-    lineIds: base.lineIds,
-  });
-
-  const queue = [base];
-
-  while (queue.length > 0) {
-    const current = queue.shift()!;
-    const currentPlaced = placed.get(current.id)!;
-
-    for (let i = 0; i < 3; i++) {
-      const lineId = current.lineIds[i];
-      const neighbors = lineToTriangles.get(lineId) || [];
-
-      for (const nid of neighbors) {
-        if (nid === current.id) continue;
-        if (placed.has(nid)) continue;
-
-        const nextTri = triangles.find((t) => t.id === nid)!;
-
-        const sharedIndex = nextTri.lineIds.findIndex((l) => l === lineId);
-
-        const otherIdx1 = (sharedIndex + 1) % 3;
-        const otherIdx2 = (sharedIndex + 2) % 3;
-
-        const sharedLength = nextTri.edgeLengths[sharedIndex];
-        const len1 = nextTri.edgeLengths[otherIdx1];
-        const len2 = nextTri.edgeLengths[otherIdx2];
-
-        const p1 = currentPlaced.points[i];
-        const p2 = currentPlaced.points[(i + 1) % 3];
-
-        const newPoint = placeAdjacentTriangle(
-          p1,
-          p2,
-          sharedLength,
-          len1,
-          len2,
-        );
-
-        const newTri: DevelopedTriangle = {
-          id: nextTri.id,
-          name: nextTri.name,
-          lineIds: nextTri.lineIds,
-          points: [
-            p1,
-            p2,
-            newPoint,
-          ],
-        };
-
-        placed.set(nextTri.id, newTri);
-        queue.push(nextTri);
-      }
-    }
-  }
-
-  // 辺ラベル用
-  const edges: DevelopedEdge[] = [];
-
-  const used = new Set<string>();
-
-  for (const tri of placed.values()) {
-    for (let i = 0; i < 3; i++) {
-      const lineId = tri.lineIds[i];
-      if (used.has(lineId)) continue;
-
-      const line = lineMap.get(lineId);
-      if (!line) continue;
-
-      const p1 = tri.points[i];
-      const p2 = tri.points[(i + 1) % 3];
-
-      edges.push({
-        lineId,
-        p1,
-        p2,
-        length: line.surfaceLength,
-      });
-
-      used.add(lineId);
-    }
-  }
-
-  return {
-    triangles: Array.from(placed.values()),
-    edges,
-  };
-}
-function makePointKey(p: PickedPoint) {
-  return `${p.x.toFixed(3)}|${p.y.toFixed(3)}|${p.z.toFixed(3)}`;
-}
-
-function normalize3(v: Point3): Point3 {
-  const len = Math.sqrt(v.x * v.x + v.y * v.y + v.z * v.z) || 1;
-  return { x: v.x / len, y: v.y / len, z: v.z / len };
-}
-
-function sub3(a: Point3, b: Point3): Point3 {
-  return { x: a.x - b.x, y: a.y - b.y, z: a.z - b.z };
-}
-
-function dot3(a: Point3, b: Point3) {
-  return a.x * b.x + a.y * b.y + a.z * b.z;
-}
-
-function cross3(a: Point3, b: Point3): Point3 {
-  return {
-    x: a.y * b.z - a.z * b.y,
-    y: a.z * b.x - a.x * b.z,
-    z: a.x * b.y - a.y * b.x,
-  };
-}
-
-function getTriangleVerticesForSavedTriangle(
-  triangle: SavedTriangle,
-  savedLines: SavedLine[],
-) {
-  const lines = triangle.lineIds
-    .map((id) => savedLines.find((l) => l.id === id))
-    .filter(Boolean) as SavedLine[];
-
-  return getTriangleVerticesFromLines(lines);
-}
-
-function buildDevelopmentProjection(
-  savedTriangles: SavedTriangle[],
-  savedLines: SavedLine[],
-) {
-  const triangleVertices = savedTriangles
-    .map((triangle) => ({
-      triangle,
-      vertices: getTriangleVerticesForSavedTriangle(triangle, savedLines),
-    }))
-    .filter(
-      (
-        item,
-      ): item is {
-        triangle: SavedTriangle;
-        vertices: [PickedPoint, PickedPoint, PickedPoint];
-      } => Array.isArray(item.vertices) && item.vertices.length === 3,
-    );
-
-  if (triangleVertices.length === 0) return null;
-
-  const [A, B, C] = triangleVertices[0].vertices;
-
-  const origin: Point3 = A;
-  const ex = normalize3(sub3(B, A));
-  const ac = sub3(C, A);
-
-  let normal = cross3(ex, ac);
-  const normalLen = Math.sqrt(
-    normal.x * normal.x + normal.y * normal.y + normal.z * normal.z,
-  );
-
-  if (normalLen < 1e-9) {
-    normal = { x: 0, y: 0, z: 1 };
-  } else {
-    normal = normalize3(normal);
-  }
-
-  const ey = normalize3(cross3(normal, ex));
-
-  const projectPoint = (p: PickedPoint): DevPoint2D => {
-    const v = sub3(p, origin);
-    return {
-      x: dot3(v, ex),
-      y: dot3(v, ey),
-    };
-  };
-
-  const projectedPointMap = new Map<string, DevPoint2D>();
-
-  for (const { vertices } of triangleVertices) {
-    for (const p of vertices) {
-      const key = makePointKey(p);
-      if (!projectedPointMap.has(key)) {
-        projectedPointMap.set(key, projectPoint(p));
-      }
-    }
-  }
-
-  const projectedTriangles = triangleVertices.map(({ triangle, vertices }) => ({
-    triangle,
-    points: vertices.map((p) => projectedPointMap.get(makePointKey(p))!) as [
-      DevPoint2D,
-      DevPoint2D,
-      DevPoint2D,
-    ],
-  }));
-
-  const allPoints = Array.from(projectedPointMap.values());
-  const minX = Math.min(...allPoints.map((p) => p.x));
-  const maxX = Math.max(...allPoints.map((p) => p.x));
-  const minY = Math.min(...allPoints.map((p) => p.y));
-  const maxY = Math.max(...allPoints.map((p) => p.y));
-
-  return {
-    projectedTriangles,
-    minX,
-    maxX,
-    minY,
-    maxY,
-  };
-}
 function angleDeg2D(a: FlatPoint2D, b: FlatPoint2D, c: FlatPoint2D) {
   const v1x = a.x - b.x;
   const v1y = a.y - b.y;
@@ -1093,60 +761,7 @@ function DevelopmentPreview({
         strokeWidth="1"
       />
 
-      {dev.triangles.map((tri) => {
-        const isActive = activeTriangleId === tri.id;
 
-        return (
-          <polygon
-            key={tri.id}
-            points={tri.points.map((p) => `${tx(p.x)},${ty(p.y)}`).join(" ")}
-            fill={isActive ? "rgba(34,211,238,0.24)" : "rgba(34,211,238,0.16)"}
-            stroke={isActive ? "#67e8f9" : "#22d3ee"}
-            strokeWidth={isActive ? 2.2 : 1.4}
-          />
-        );
-      })}
-{dev.triangles.map((tri) => {
-  const isActive = activeTriangleId === tri.id;
-
-  const [p0, p1, p2] = tri.points;
-  const angles = [
-    angleDeg2D(p2, p0, p1),
-    angleDeg2D(p0, p1, p2),
-    angleDeg2D(p1, p2, p0),
-  ];
-
-  const rightIndex = angles.findIndex((deg) => Math.abs(deg - 90) <= 2.5);
-
-  let rightMark: readonly FlatPoint2D[] | null = null;
-  if (rightIndex === 0) {
-    rightMark = buildRightAngleMark(p2, p0, p1, 0.25);
-  } else if (rightIndex === 1) {
-    rightMark = buildRightAngleMark(p0, p1, p2, 0.25);
-  } else if (rightIndex === 2) {
-    rightMark = buildRightAngleMark(p1, p2, p0, 0.25);
-  }
-
-  return (
-    <g key={tri.id}>
-      <polygon
-        points={tri.points.map((p) => `${tx(p.x)},${ty(p.y)}`).join(" ")}
-        fill={isActive ? "rgba(34,211,238,0.24)" : "rgba(34,211,238,0.16)"}
-        stroke={isActive ? "#67e8f9" : "#22d3ee"}
-        strokeWidth={isActive ? 2.2 : 1.4}
-      />
-
-      {rightMark ? (
-        <polyline
-          points={rightMark.map((p) => `${tx(p.x)},${ty(p.y)}`).join(" ")}
-          fill="none"
-          stroke={isActive ? "#facc15" : "#e2e8f0"}
-          strokeWidth={1.4}
-        />
-      ) : null}
-    </g>
-  );
-})}
     </svg>
   );
 }
@@ -1208,8 +823,7 @@ function handlePrintDevelopment() {
   window.print();
 }
 export default function LasViewer() {
-  const [reliefColorEnabled, setReliefColorEnabled] = useState(true);
-const [reliefStrength, setReliefStrength] = useState(0.6);
+
   const [points, setPoints] = useState<Point3[]>([]);
   const [fileName, setFileName] = useState("");
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -1251,6 +865,7 @@ const [hoverTriangleId, setHoverTriangleId] = useState<string | null>(null);
 const [rotateSpeed, setRotateSpeed] = useState(0.5);  // ↓ゆっくり回る
 const [zoomSpeed, setZoomSpeed] = useState(0.7);      // ↓ズーム暴れ防止
 const [panSpeed, setPanSpeed] = useState(0.5);        // ↓移動も落ち着く
+const [reliefSteps, setReliefSteps] = useState(0);
 const isSamePoint = (a: PickedPoint, b: PickedPoint, eps = 0.001) => {
   return (
     Math.abs(a.x - b.x) < eps &&
@@ -1258,9 +873,6 @@ const isSamePoint = (a: PickedPoint, b: PickedPoint, eps = 0.001) => {
     Math.abs(a.z - b.z) < eps
   );
 };
-const dev = useMemo(() => {
-  return buildDevelopment(savedTriangles, savedLines);
-}, [savedTriangles, savedLines]);
 
 const isDuplicateLine = useMemo(() => {
   if (!startPoint || !endPoint) return false;
@@ -1667,8 +1279,8 @@ setIsPinned(false);
   zoomSpeed={zoomSpeed}
   panSpeed={panSpeed}
   cameraLift={cameraLift}
-   reliefColorEnabled={reliefColorEnabled}
-  reliefStrength={reliefStrength}
+  
+  reliefSteps={reliefSteps}
 />
 {points.length === 0 ? (
   <button
@@ -1681,13 +1293,7 @@ setIsPinned(false);
 ) : null}
 {points.length > 0 ? (
   <div className="absolute bottom-4 left-1/2 z-[6] -translate-x-1/2">
-    <button
-      type="button"
-      onClick={resetMeasuredPointsOnly}
-      className="rounded-xl border border-white/10 bg-slate-900/75 px-4 py-2 text-sm text-slate-100 shadow-xl backdrop-blur-md hover:bg-slate-800/85"
-    >
-      測点リセット
-    </button>
+   
   </div>
 ) : null}
       {!leftCollapsed ? (
@@ -1893,31 +1499,22 @@ step={0.002} // ←少し鈍く（2mm刻み）
     起伏カラー
   </div>
 
-  <div className="mt-3 flex items-center justify-between">
-    <span className="text-xs text-slate-300">ON/OFF</span>
-    <button
-      type="button"
-      onClick={() => setReliefColorEnabled((v) => !v)}
-      className="rounded border border-white/10 px-2 py-1 text-xs bg-white/5 hover:bg-white/10"
-    >
-      {reliefColorEnabled ? "ON" : "OFF"}
-    </button>
-  </div>
+ 
 
-  <div className="mt-3">
-    <label className="block text-xs text-slate-300">
-      強調度: {(reliefStrength * 100).toFixed(0)}%
-    </label>
-    <input
-      type="range"
-      min={0}
-      max={1}
-      step={0.05}
-      value={reliefStrength}
-      onChange={(e) => setReliefStrength(Number(e.target.value))}
-      className="mt-1 w-full"
-    />
-  </div>
+ <div className="mt-3">
+  <label className="block text-xs text-slate-300">
+    等高線強度: {reliefSteps === 0 ? "スムーズ" : `${reliefSteps}段`}
+  </label>
+  <input
+    type="range"
+    min={0}
+    max={50}
+    step={1}
+    value={reliefSteps}
+    onChange={(e) => setReliefSteps(Number(e.target.value))}
+    className="mt-1 w-full"
+  />
+</div>
 </div>
 
   <div className="mt-3">
@@ -2100,6 +1697,7 @@ step={0.02}
     className="mt-1 w-full"
   />
 </div>
+
 
               <div className="mt-4 flex flex-wrap gap-2">
                 <button
