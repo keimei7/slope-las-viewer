@@ -6,7 +6,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { TOUCH } from "three";
 import type { PickedPoint, Point3 } from "./LasViewer";
-
+import { useThree } from "@react-three/fiber";
 type ViewMode = "top" | "angled";
 
 type SavedLine = {
@@ -27,6 +27,32 @@ type SavedTriangle = {
   edgeLengths: [number, number, number];
   area: number;
 };
+function buildPixelLOD(
+  points: Point3[],
+  camera: THREE.Camera,
+  size: { width: number; height: number },
+  density: number = 1.2, // 小さいほど密
+) {
+  const projected = new Map<string, Point3>();
+
+  const vec = new THREE.Vector3();
+
+  for (const p of points) {
+    vec.set(p.x, p.y, p.z);
+    vec.project(camera);
+
+    const x = Math.floor((vec.x * 0.5 + 0.5) * size.width / density);
+    const y = Math.floor((vec.y * -0.5 + 0.5) * size.height / density);
+
+    const key = `${x}_${y}`;
+
+    if (!projected.has(key)) {
+      projected.set(key, p);
+    }
+  }
+
+  return Array.from(projected.values());
+}
 
 function computeBounds(points: Point3[]) {
   if (points.length === 0) {
@@ -1034,6 +1060,15 @@ export default function PointCloudCanvas({
   onHoverTriangle: (triangleId: string | null) => void;
   savedTriangles: SavedTriangle[];
 }) {
+  const { camera, size } = useThree();
+
+const pixelLODPoints = useMemo(() => {
+  if (points.length > 1500000) {
+    return buildPixelLOD(points.filter((_, i) => i % 2 === 0), camera, size, 1.5);
+  }
+  return buildPixelLOD(points, camera, size, 1.5);
+}, [points, camera, size]);
+
   const bounds = useMemo(() => computeBounds(points), [points]);
 
   const [lodLevel, setLodLevel] = useState<"near" | "mid" | "far">("mid");
@@ -1074,7 +1109,7 @@ export default function PointCloudCanvas({
           rotation={[Math.PI / 2, 0, 0]}
         />
 <PointCloud
-  points={lodPoints}
+points={pixelLODPoints}
   zScale={zScale}
   pointSize={pointSize}
   onPick={onPickPoint}
