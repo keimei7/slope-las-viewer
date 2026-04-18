@@ -871,7 +871,7 @@ const [rotateSpeed, setRotateSpeed] = useState(0.5);  // ↓ゆっくり回る
 const [zoomSpeed, setZoomSpeed] = useState(0.7);      // ↓ズーム暴れ防止
 const [panSpeed, setPanSpeed] = useState(0.5);        // ↓移動も落ち着く
 const [reliefSteps, setReliefSteps] = useState(0);
-
+const [maxDisplayPoints, setMaxDisplayPoints] = useState(2000000);
 const isSamePoint = (a: PickedPoint, b: PickedPoint, eps = 0.001) => {
   return (
     Math.abs(a.x - b.x) < eps &&
@@ -907,7 +907,20 @@ const activeTriangle = useMemo(() => {
 const totalTriangleArea = useMemo(() => {
   return savedTriangles.reduce((sum, triangle) => sum + triangle.area, 0);
 }, [savedTriangles]);
+const displayPoints = useMemo(() => {
+  if (points.length <= maxDisplayPoints) {
+    return points;
+  }
 
+  const step = Math.ceil(points.length / maxDisplayPoints);
+  const sampled: Point3[] = [];
+
+  for (let i = 0; i < points.length; i += step) {
+    sampled.push(points[i]);
+  }
+
+  return sampled;
+}, [points, maxDisplayPoints]);
 
   const stats = useMemo(() => {
     if (points.length === 0) return null;
@@ -1243,7 +1256,7 @@ setIsPinned(false);
     <div className="relative h-screen w-screen overflow-hidden bg-slate-950 text-slate-100">
 <PointCloudCanvas
   onResetMeasuredPoints={resetMeasuredPointsOnly}
-  points={points}
+ points={displayPoints}
   startPoint={startPoint}
   endPoint={endPoint}
   onPickPoint={handlePick}
@@ -1496,7 +1509,22 @@ step={0.002} // ←少し鈍く（2mm刻み）
   </div>
 
  
-
+<div className="mt-3">
+  <label className="block text-xs text-slate-300">
+    表示点数上限: {maxDisplayPoints.toLocaleString()}
+  </label>
+  <input
+    type="range"
+    min={100000}
+    max={5000000}
+    step={100000}
+    value={maxDisplayPoints}
+    onChange={(e) =>
+      setMaxDisplayPoints(clamp(Number(e.target.value), 100000, 5000000))
+    }
+    className="mt-1 w-full"
+  />
+</div>
  <div className="mt-3">
   <label className="block text-xs text-slate-300">
     等高線強度: {reliefSteps === 0 ? "スムーズ" : `${reliefSteps}段`}
@@ -1705,8 +1733,8 @@ step={0.02}
                 </button>
               </div>
 
-             <div className="mt-3 text-xs text-slate-400">
-  表示中: {points.length.toLocaleString()} 点
+           <div className="mt-3 text-xs text-slate-400">
+  表示中: {displayPoints.length.toLocaleString()} / 元点群: {points.length.toLocaleString()} 点
 </div>
             </div>
 
