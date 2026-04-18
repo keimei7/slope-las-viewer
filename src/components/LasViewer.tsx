@@ -218,6 +218,36 @@ function computeTapeSamplePoints(
   const alongWindow = Math.max(searchRadius, step * 0.2);
 
   for (let i = 0; i <= divisionCount; i++) {
+    if (i === 0) {
+  samples.push({
+    x: startPoint.x,
+    y: startPoint.y,
+    z: startPoint.z,
+  });
+  continue;
+}
+
+if (i === divisionCount) {
+  samples.push({
+    x: endPoint.x,
+    y: endPoint.y,
+    z: endPoint.z,
+  });
+  continue;
+}
+const corridorPoints = sourcePoints.filter((p) => {
+  const px = p.x - ax;
+  const py = p.y - ay;
+
+  const along = px * ux + py * uy;
+  if (along < -searchRadius || along > baseLen + searchRadius) return false;
+
+  const perpX = px - along * ux;
+  const perpY = py - along * uy;
+  const perpDist = Math.sqrt(perpX * perpX + perpY * perpY);
+
+  return perpDist <= Math.max(sliceWidth * 2.5, searchRadius * 1.2);
+});
     const targetAlong = step * i;
     const targetX = ax + ux * targetAlong;
     const targetY = ay + uy * targetAlong;
@@ -231,8 +261,8 @@ function computeTapeSamplePoints(
       score: number;
     }> = [];
 
-    for (const p of sourcePoints) {
-      const px = p.x - ax;
+for (const p of corridorPoints) {
+        const px = p.x - ax;
       const py = p.y - ay;
 
       const along = px * ux + py * uy;
@@ -257,6 +287,7 @@ function computeTapeSamplePoints(
   const jumpDist = Math.sqrt(
     jumpDx * jumpDx + jumpDy * jumpDy + jumpDz * jumpDz
   );
+
 
   if (jumpDist > Math.max(step * 1.8, searchRadius * 1.5)) continue;
 }
@@ -316,16 +347,15 @@ function computeTapeSamplePoints(
       }
 
       if (fallback) {
-        let lockRatio = 0.55;
+      let lockRatio = 0.72;
 
-        if (guideMode === "horizontal") {
-          lockRatio = 0.96;
-        } else if (guideMode === "vertical") {
-          lockRatio = 0.32;
-        } else if (guideMode === "angled") {
-          lockRatio = 0.84;
-        }
-
+if (guideMode === "horizontal") {
+  lockRatio = 0.97;
+} else if (guideMode === "vertical") {
+  lockRatio = 0.55;
+} else if (guideMode === "angled") {
+  lockRatio = 0.88;
+}
         samples.push({
           x: targetX * lockRatio + fallback.x * (1 - lockRatio),
           y: targetY * lockRatio + fallback.y * (1 - lockRatio),
@@ -388,8 +418,7 @@ if (top.length > 1) {
         const clamped = Math.max(-1, Math.min(1, cos));
         const bendDeg = (Math.acos(clamped) * 180) / Math.PI;
 
-        // 急折れは裏面・貫通っぽさが出やすいので強めに罰する
-        continuityPenalty += Math.max(0, bendDeg - 28) * 0.22;
+        continuityPenalty += Math.max(0, bendDeg - 20) * 0.45;
       }
 
       const prevZStep = prevSample.z - prevPrevSample.z;
@@ -406,16 +435,15 @@ if (top.length > 1) {
       }
     }
 
-    let lockRatio = 0.55;
+  let lockRatio = 0.72;
 
-    if (guideMode === "horizontal") {
-      lockRatio = 0.96;
-    } else if (guideMode === "vertical") {
-      lockRatio = 0.32;
-    } else if (guideMode === "angled") {
-      lockRatio = 0.84;
-    }
-
+if (guideMode === "horizontal") {
+  lockRatio = 0.97;
+} else if (guideMode === "vertical") {
+  lockRatio = 0.55;
+} else if (guideMode === "angled") {
+  lockRatio = 0.88;
+}
     samples.push({
       x: targetX * lockRatio + chosen.point.x * (1 - lockRatio),
       y: targetY * lockRatio + chosen.point.y * (1 - lockRatio),
