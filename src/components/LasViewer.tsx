@@ -853,7 +853,7 @@ const [hitThreshold, setHitThreshold] = useState(0.015);
   const [focusWidth, setFocusWidth] = useState(6);
 
   const [divisionCount, setDivisionCount] = useState(8);
-const [searchRadius, setSearchRadius] = useState(0.02); // ←デフォ2cmにちょい上げ（おすすめ）
+const [searchRadius, setSearchRadius] = useState(0.03);
 const sliceWidth = 0.01; // 1cm固定
   const [isPinned, setIsPinned] = useState(false);
 
@@ -956,6 +956,9 @@ const displayPoints = useMemo(() => {
     if (!startPoint || !endPoint) return null;
     return distance3D(startPoint, endPoint);
   }, [startPoint, endPoint]);
+const effectiveSearchRadius = useMemo(() => {
+  return Math.max(searchRadius, pointSize * 2.5);
+}, [searchRadius, pointSize]);
 
 const tapePoints = useMemo(() => {
   return computeTapeSamplePoints(
@@ -963,7 +966,7 @@ const tapePoints = useMemo(() => {
     startPoint,
     endPoint,
     divisionCount,
-    searchRadius,
+    effectiveSearchRadius,
     sliceWidth,
     guideMode,
   );
@@ -972,7 +975,7 @@ const tapePoints = useMemo(() => {
   startPoint,
   endPoint,
   divisionCount,
-  searchRadius,
+  effectiveSearchRadius,
   sliceWidth,
   guideMode,
 ]);
@@ -1446,8 +1449,7 @@ setHoverSnapPoint(null);
   
   
 </div>
-            </div>
-<div className="mt-4 rounded-xl border border-white/10 bg-black/15 p-3">
+            </div><div className="mt-4 rounded-xl border border-white/10 bg-black/15 p-3">
   <div className="text-xs font-semibold uppercase tracking-wide text-cyan-100/80">
     テープ設定
   </div>
@@ -1469,29 +1471,27 @@ setHoverSnapPoint(null);
     />
   </div>
 
- <div className="mt-3">
-  <label className="block text-xs text-slate-300">
-    近傍探索半径: {(searchRadius * 100).toFixed(0)} cm
-  </label>
-  <input
-    type="range"
-   min={0}
-max={0.10}   // ←10cmまで
-step={0.002} // ←少し鈍く（2mm刻み）
-    value={searchRadius}
-    onChange={(e) =>
-      setSearchRadius(clamp(Number(e.target.value), 0, 0.1))
-    }
-    className="mt-1 w-full"
-  />
-</div>
+  <div className="mt-3">
+    <label className="block text-xs text-slate-300">
+      近傍探索半径: {(effectiveSearchRadius * 100).toFixed(0)} cm
+    </label>
+    <input
+      type="range"
+      min={0}
+      max={0.5}
+      step={0.002}
+      value={searchRadius}
+      onChange={(e) =>
+        setSearchRadius(clamp(Number(e.target.value), 0, 0.1))
+      }
+      className="mt-1 w-full"
+    />
+  </div>
 
- <div className="mt-3">
-  <label className="block text-xs text-slate-300">
-    断面スライス幅: 1 cm
-  </label>
-
-    
+  <div className="mt-3">
+    <label className="block text-xs text-slate-300">
+      断面スライス幅: 1 cm
+    </label>
   </div>
 
   <div className="mt-3 text-xs text-slate-400">
@@ -1503,210 +1503,213 @@ step={0.002} // ←少し鈍く（2mm刻み）
   <div className="text-xs font-semibold uppercase tracking-wide text-cyan-100/80">
     表示設定
   </div>
+
   <div className="mt-4 rounded-xl border border-white/10 bg-black/15 p-3">
-  <div className="text-xs font-semibold uppercase tracking-wide text-cyan-100/80">
-    起伏カラー
+    <div className="text-xs font-semibold uppercase tracking-wide text-cyan-100/80">
+      起伏カラー
+    </div>
+
+    <div className="mt-3">
+      <label className="block text-xs text-slate-300">
+        表示点数上限: {maxDisplayPoints.toLocaleString()}
+      </label>
+      <input
+        type="range"
+        min={100000}
+        max={5000000}
+        step={100000}
+        value={maxDisplayPoints}
+        onChange={(e) =>
+          setMaxDisplayPoints(clamp(Number(e.target.value), 100000, 5000000))
+        }
+        className="mt-1 w-full"
+      />
+    </div>
+
+    <div className="mt-3">
+      <label className="block text-xs text-slate-300">
+        等高線強度: {reliefSteps === 0 ? "スムーズ" : `${reliefSteps}段`}
+      </label>
+      <input
+        type="range"
+        min={0}
+        max={50}
+        step={1}
+        value={reliefSteps}
+        onChange={(e) => setReliefSteps(Number(e.target.value))}
+        className="mt-1 w-full"
+      />
+    </div>
+
+    <div className="mt-3">
+      <label className="block text-xs text-slate-300">
+        Z誇張: {zScale.toFixed(2)}x
+      </label>
+      <input
+        type="range"
+        min={1}
+        max={5}
+        step={0.05}
+        value={zScale}
+        onChange={(e) =>
+          setZScale(clamp(Number(e.target.value), 1, 5))
+        }
+        className="mt-1 w-full"
+      />
+    </div>
   </div>
 
- 
-<div className="mt-3">
-  <label className="block text-xs text-slate-300">
-    表示点数上限: {maxDisplayPoints.toLocaleString()}
-  </label>
-  <input
-    type="range"
-    min={100000}
-    max={5000000}
-    step={100000}
-    value={maxDisplayPoints}
-    onChange={(e) =>
-      setMaxDisplayPoints(clamp(Number(e.target.value), 100000, 5000000))
-    }
-    className="mt-1 w-full"
-  />
-</div>
- <div className="mt-3">
-  <label className="block text-xs text-slate-300">
-    等高線強度: {reliefSteps === 0 ? "スムーズ" : `${reliefSteps}段`}
-  </label>
-  <input
-    type="range"
-    min={0}
-    max={50}
-    step={1}
-    value={reliefSteps}
-    onChange={(e) => setReliefSteps(Number(e.target.value))}
-    className="mt-1 w-full"
-  />
-</div>
-</div>
+  <div className="mt-4 rounded-xl border border-white/10 bg-black/15 p-3">
+    <div className="text-xs font-semibold uppercase tracking-wide text-cyan-100/80">
+      点の大きさ
+    </div>
 
-  
-
-  <div className="mt-3">
-    <label className="block text-xs text-slate-300">
-      Z誇張: {zScale.toFixed(2)}x
-    </label>
-    <input
-      type="range"
-      min={1}
-      max={5}
-      step={0.05}
-      value={zScale}
-      onChange={(e) =>
-        setZScale(clamp(Number(e.target.value), 1, 5))
-      }
-      className="mt-1 w-full"
-    />
+    <div className="mt-3">
+      <label className="block text-xs text-slate-300">
+        点サイズ: {pointSize.toFixed(3)}
+      </label>
+      <input
+        type="range"
+        min={0.002}
+        max={0.1}
+        step={0.002}
+        value={pointSize}
+        onChange={(e) =>
+          setPointSize(clamp(Number(e.target.value), 0.002, 0.1))
+        }
+        className="mt-1 w-full"
+      />
+    </div>
   </div>
+</div>
 
-  <div className="mt-3">
-    <label className="block text-xs text-slate-300">
-      点サイズ: {pointSize.toFixed(3)}
-    </label>
-    <input
-      type="range"
-      min={0.002}
-max={0.1}
-step={0.002}
-value={pointSize}
-onChange={(e) =>
-  setPointSize(clamp(Number(e.target.value), 0.002, 0.1))
-}
-      className="mt-1 w-full"
-    />
-  </div>
 <div className="mt-4 rounded-xl border border-white/10 bg-black/15 p-3">
   <div className="text-xs font-semibold uppercase tracking-wide text-cyan-100/80">
     操作ミキサー
   </div>
 
-  <div className="mt-3">
-    <label className="block text-xs text-slate-300">
-      点の大きさ: {pointSize.toFixed(3)}
-    </label>
-    <input
-      type="range"
-     min={0.004}
-max={0.06}
-step={0.002}
-value={pointSize}
-onChange={(e) =>
-  setPointSize(clamp(Number(e.target.value), 0.004, 0.06))
-}
-      className="mt-1 w-full"
-    />
+  <div className="mt-4 rounded-xl border border-white/10 bg-black/15 p-3">
+    <div className="text-xs font-semibold uppercase tracking-wide text-cyan-100/80">
+      測点・線
+    </div>
+
+    <div className="mt-3">
+      <label className="block text-xs text-slate-300">
+        当たり判定: {(hitThreshold * 100).toFixed(0)} %
+      </label>
+      <input
+        type="range"
+        min={0.01}
+        max={0.12}
+        step={0.005}
+        value={hitThreshold}
+        onChange={(e) =>
+          setHitThreshold(clamp(Number(e.target.value), 0.01, 0.12))
+        }
+        className="mt-1 w-full"
+      />
+    </div>
+
+    <div className="mt-3">
+      <label className="block text-xs text-slate-300">
+        線の太さ: {lineWidthScale.toFixed(2)}x
+      </label>
+      <input
+        type="range"
+        min={1.2}
+        max={5}
+        step={0.2}
+        value={lineWidthScale}
+        onChange={(e) =>
+          setLineWidthScale(clamp(Number(e.target.value), 1.2, 5))
+        }
+        className="mt-1 w-full"
+      />
+    </div>
+
+    <div className="mt-3">
+      <label className="block text-xs text-slate-300">
+        計測ライン強調幅: {focusWidth.toFixed(1)} m
+      </label>
+      <input
+        type="range"
+        min={1}
+        max={20}
+        step={0.5}
+        value={focusWidth}
+        onChange={(e) =>
+          setFocusWidth(clamp(Number(e.target.value), 1, 20))
+        }
+        className="mt-1 w-full"
+      />
+    </div>
   </div>
 
-  <div className="mt-3">
-    <label className="block text-xs text-slate-300">
-      線の太さ: {lineWidthScale.toFixed(2)}x
-    </label>
-    <input
-      type="range"
-     min={1.2}
-max={5}
-step={0.2}
-value={lineWidthScale}
-onChange={(e) =>
-  setLineWidthScale(clamp(Number(e.target.value), 1.2, 5))
-}
-      className="mt-1 w-full"
-    />
+  <div className="mt-4 rounded-xl border border-white/10 bg-black/15 p-3">
+    <div className="text-xs font-semibold uppercase tracking-wide text-cyan-100/80">
+      カメラ操作
+    </div>
+
+    <div className="mt-3">
+      <label className="block text-xs text-slate-300">
+        回転感度: {rotateSpeed.toFixed(2)}
+      </label>
+      <input
+        type="range"
+        min={0.2}
+        max={1.2}
+        step={0.02}
+        value={rotateSpeed}
+        onChange={(e) => setRotateSpeed(Number(e.target.value))}
+        className="mt-1 w-full"
+      />
+    </div>
+
+    <div className="mt-3">
+      <label className="block text-xs text-slate-300">
+        ズーム感度: {zoomSpeed.toFixed(2)}
+      </label>
+      <input
+        type="range"
+        min={0.3}
+        max={1.5}
+        step={0.03}
+        value={zoomSpeed}
+        onChange={(e) => setZoomSpeed(Number(e.target.value))}
+        className="mt-1 w-full"
+      />
+    </div>
+
+    <div className="mt-3">
+      <label className="block text-xs text-slate-300">
+        パン感度: {panSpeed.toFixed(2)}
+      </label>
+      <input
+        type="range"
+        min={0.2}
+        max={1.2}
+        step={0.02}
+        value={panSpeed}
+        onChange={(e) => setPanSpeed(Number(e.target.value))}
+        className="mt-1 w-full"
+      />
+    </div>
+
+    <div className="mt-3">
+      <label className="block text-xs text-slate-300">
+        カメラ高さ: {(cameraLift * 100).toFixed(0)}%
+      </label>
+      <input
+        type="range"
+        min={0}
+        max={1}
+        step={0.01}
+        value={cameraLift}
+        onChange={(e) => setCameraLift(Number(e.target.value))}
+        className="mt-1 w-full"
+      />
+    </div>
   </div>
-
-  <div className="mt-3">
-    <label className="block text-xs text-slate-300">
-      当たり判定: {(hitThreshold * 100).toFixed(0)} %
-    </label>
-    <input
-      type="range"
-      min={0.01}
-      max={0.12}
-      step={0.005}
-      value={hitThreshold}
-      onChange={(e) =>
-        setHitThreshold(clamp(Number(e.target.value), 0.01, 0.12))
-      }
-      className="mt-1 w-full"
-    />
-  </div>
-</div>
-  <div className="mt-3">
-    <label className="block text-xs text-slate-300">
-      計測ライン強調幅: {focusWidth.toFixed(1)} m
-    </label>
-    <input
-      type="range"
-      min={1}
-      max={20}
-      step={0.5}
-      value={focusWidth}
-      onChange={(e) =>
-        setFocusWidth(clamp(Number(e.target.value), 1, 20))
-      }
-      className="mt-1 w-full"
-    />
-  </div>
- <div className="mt-3">
-  <label className="block text-xs text-slate-300">
-    回転感度: {rotateSpeed.toFixed(2)}
-  </label>
-  <input
-    type="range"
-    min={0.2}
-max={1.2}   // ←上限カット
-step={0.02} // ←微調整しやすく
-    value={rotateSpeed}
-    onChange={(e) => setRotateSpeed(Number(e.target.value))}
-    className="mt-1 w-full"
-  />
-</div>
-
-<div className="mt-3">
-  <label className="block text-xs text-slate-300">
-    ズーム感度: {zoomSpeed.toFixed(2)}
-  </label>
-  <input
-    type="range"
-   min={0.3}
-max={1.5}
-step={0.03}
-    value={zoomSpeed}
-    onChange={(e) => setZoomSpeed(Number(e.target.value))}
-    className="mt-1 w-full"
-  />
-</div>
-
-<div className="mt-3">
-  <label className="block text-xs text-slate-300">
-    パン感度: {panSpeed.toFixed(2)}
-  </label>
-  <input
-    type="range"
-   min={0.2}
-max={1.2}
-step={0.02}
-    value={panSpeed}
-    onChange={(e) => setPanSpeed(Number(e.target.value))}
-    className="mt-1 w-full"
-  />
-</div>
-<div className="mt-3">
-  <label className="block text-xs text-slate-300">
-    カメラ高さ: {(cameraLift * 100).toFixed(0)}%
-  </label>
-  <input
-    type="range"
-    min={0}
-    max={1}
-    step={0.01}
-    value={cameraLift}
-    onChange={(e) => setCameraLift(Number(e.target.value))}
-    className="mt-1 w-full"
-  />
-</div>
-
 
 
               <div className="mt-4 flex flex-wrap gap-2">
