@@ -1039,10 +1039,10 @@ export default function PointCloudCanvas({
   const [lodLevel, setLodLevel] = useState<"near" | "mid" | "far">("mid");
 
   const lodPoints = useMemo(() => {
-    if (lodLevel === "near") return points;
-    if (lodLevel === "mid") return points.filter((_, i) => i % 2 === 0);
-    return points.filter((_, i) => i % 4 === 0);
-  }, [points, lodLevel]);
+  if (lodLevel === "near") return points;
+  if (lodLevel === "mid") return points.filter((_, i) => i % 1.2 < 1);
+  return points.filter((_, i) => i % 1.8 < 1);
+}, [points, lodLevel]);
 
   const gridSize = useMemo(
     () => Math.max(bounds.sx, bounds.sy, 200) * 2.5,
@@ -1207,13 +1207,13 @@ export default function PointCloudCanvas({
   cameraLift={cameraLift}
   onDistanceChange={(distance) => {
     const span = Math.max(bounds.sx, bounds.sy, bounds.sz * zScale, 1);
-    if (distance < span * 1.2) {
-      setLodLevel("near");
-    } else if (distance < span * 2.5) {
-      setLodLevel("mid");
-    } else {
-      setLodLevel("far");
-    }
+   if (distance < span * 2.0) {
+  setLodLevel("near");
+} else if (distance < span * 4.0) {
+  setLodLevel("mid");
+} else {
+  setLodLevel("far");
+}
   }}
 />
       </Canvas>
