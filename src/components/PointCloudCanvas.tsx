@@ -2,7 +2,7 @@
 
 import { Canvas } from "@react-three/fiber";
 import { OrbitControls, Line, Html } from "@react-three/drei";
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { TOUCH } from "three";
 import type { PickedPoint, Point3 } from "./LasViewer";
@@ -822,6 +822,7 @@ function TriangleMesh({
   );
 }
 function CameraRig({
+  onDistanceChange,
   points,
   zScale,
   viewMode,
@@ -831,6 +832,7 @@ function CameraRig({
   panSpeed,
   cameraLift,
 }: {
+  onDistanceChange: (distance: number) => void;
   points: Point3[];
   zScale: number;
   viewMode: ViewMode;
@@ -894,6 +896,7 @@ useEffect(() => {
     controls.update();
 
     e.preventDefault();
+    onDistanceChange(camera.position.distanceTo(controls.target));
   };
 
   const onPointerUp = () => {
@@ -910,7 +913,7 @@ useEffect(() => {
     dom.removeEventListener("pointermove", onPointerMove);
     window.removeEventListener("pointerup", onPointerUp);
   };
-}, [maxSpan]);
+}, [maxSpan, onDistanceChange]);
 
 
   useEffect(() => {
@@ -934,8 +937,9 @@ if (viewMode === "top") {
   );
 }
 
-  controls.update();
-}, [points, maxSpan, targetZ, viewMode, viewResetKey]);
+   controls.update();
+  onDistanceChange(camera.position.distanceTo(controls.target));
+}, [points, maxSpan, targetZ, viewMode, viewResetKey, onDistanceChange]);
 
   return (
     <OrbitControls
@@ -965,6 +969,7 @@ if (viewMode === "top") {
 }
 export default function PointCloudCanvas({
   points,
+  focusPoints,
   startPoint,
   endPoint,
   onPickPoint,
@@ -996,6 +1001,8 @@ export default function PointCloudCanvas({
   onResetMeasuredPoints,
   reliefSteps,
 }: {
+  points: Point3[];
+  focusPoints: Point3[];
   reliefSteps: number;
   selectedLineIds: string[];
   lineWidthScale: number;
@@ -1004,7 +1011,6 @@ export default function PointCloudCanvas({
   zoomSpeed: number;
   panSpeed: number;
   cameraLift: number;
-  points: Point3[];
   startPoint: PickedPoint | null;
   endPoint: PickedPoint | null;
   onPickPoint: (p: PickedPoint) => void;
@@ -1028,14 +1034,20 @@ export default function PointCloudCanvas({
   onHoverTriangle: (triangleId: string | null) => void;
   savedTriangles: SavedTriangle[];
 }) {
-
   const bounds = useMemo(() => computeBounds(points), [points]);
- 
+
+  const [lodLevel, setLodLevel] = useState<"near" | "mid" | "far">("mid");
+
+  const lodPoints = useMemo(() => {
+    if (lodLevel === "near") return points;
+    if (lodLevel === "mid") return points.filter((_, i) => i % 2 === 0);
+    return points.filter((_, i) => i % 4 === 0);
+  }, [points, lodLevel]);
+
   const gridSize = useMemo(
     () => Math.max(bounds.sx, bounds.sy, 200) * 2.5,
     [bounds],
   );
-
   return (
     <main className="absolute inset-0">
      <Canvas
@@ -1062,7 +1074,7 @@ export default function PointCloudCanvas({
           rotation={[Math.PI / 2, 0, 0]}
         />
 <PointCloud
-  points={points}
+  points={lodPoints}
   zScale={zScale}
   pointSize={pointSize}
   onPick={onPickPoint}
@@ -1072,6 +1084,20 @@ export default function PointCloudCanvas({
   focusWidth={focusWidth}
   sliceWidth={sliceWidth}
 />
+
+{focusPoints.length > 0 ? (
+  <PointCloud
+    points={focusPoints}
+    zScale={zScale}
+    pointSize={pointSize * 1.05}
+    onPick={onPickPoint}
+    onHover={onHoverPoint}
+    startPoint={startPoint}
+    endPoint={endPoint}
+    focusWidth={focusWidth}
+    sliceWidth={sliceWidth}
+  />
+) : null}
 
         {startPoint ? (
           <Marker
@@ -1170,7 +1196,7 @@ export default function PointCloudCanvas({
           />
         ))}
 
-       <CameraRig
+      <CameraRig
   points={points}
   zScale={zScale}
   viewMode={viewMode}
@@ -1179,6 +1205,16 @@ export default function PointCloudCanvas({
   zoomSpeed={zoomSpeed}
   panSpeed={panSpeed}
   cameraLift={cameraLift}
+  onDistanceChange={(distance) => {
+    const span = Math.max(bounds.sx, bounds.sy, bounds.sz * zScale, 1);
+    if (distance < span * 1.2) {
+      setLodLevel("near");
+    } else if (distance < span * 2.5) {
+      setLodLevel("mid");
+    } else {
+      setLodLevel("far");
+    }
+  }}
 />
       </Canvas>
     </main>

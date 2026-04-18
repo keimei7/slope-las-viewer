@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";import { load } from "@loaders.gl/core";
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
+import { load } from "@loaders.gl/core";
 import { LASLoader } from "@loaders.gl/las";
 import PointCloudCanvas from "./PointCloudCanvas";
 import CrossSectionView from "./CrossSectionView";
@@ -86,6 +87,37 @@ function voxelDownsample(points: Point3[], voxelSize: number) {
   }
 
   return Array.from(map.values());
+}
+
+function distancePointToSegment2D(
+  px: number,
+  py: number,
+  ax: number,
+  ay: number,
+  bx: number,
+  by: number,
+) {
+  const abx = bx - ax;
+  const aby = by - ay;
+  const apx = px - ax;
+  const apy = py - ay;
+
+  const abLenSq = abx * abx + aby * aby;
+  if (abLenSq === 0) {
+    const dx = px - ax;
+    const dy = py - ay;
+    return Math.sqrt(dx * dx + dy * dy);
+  }
+
+  let t = (apx * abx + apy * aby) / abLenSq;
+  t = Math.max(0, Math.min(1, t));
+
+  const cx = ax + abx * t;
+  const cy = ay + aby * t;
+
+  const dx = px - cx;
+  const dy = py - cy;
+  return Math.sqrt(dx * dx + dy * dy);
 }
 function toPointsFromLasData(data: unknown): Point3[] {
   const rows: Point3[] = [];
@@ -785,11 +817,13 @@ function DevelopmentPreview({
     </svg>
   );
 }
+
 function buildDevelopmentExportData(savedTriangles: SavedTriangle[]) {
   const dev = buildConnectedTriangleDevelopment(savedTriangles);
   if (!dev || dev.triangles.length === 0) return null;
   return dev;
 }
+
 
 function exportDevelopmentToDXF(savedTriangles: SavedTriangle[]) {
   const dev = buildDevelopmentExportData(savedTriangles);
@@ -888,6 +922,7 @@ const [panSpeed, setPanSpeed] = useState(0.5);        // ↓移動も落ち着�
 const [reliefSteps, setReliefSteps] = useState(0);
 
 const [voxelBase, setVoxelBase] = useState(0.05);
+const [displayPoints, setDisplayPoints] = useState<Point3[]>([]);
 
 const isSamePoint = (a: PickedPoint, b: PickedPoint, eps = 0.001) => {
   return (
@@ -914,6 +949,23 @@ const isDuplicateLine = useMemo(() => {
     return sameForward || sameReverse;
   });
 }, [startPoint, endPoint, savedLines]);
+const focusPoints = useMemo(() => {
+  if (!startPoint || !endPoint) return [];
+
+  const radius = Math.max(focusWidth, sliceWidth * 4);
+
+  return points.filter((p) => {
+    const d = distancePointToSegment2D(
+      p.x,
+      p.y,
+      startPoint.x,
+      startPoint.y,
+      endPoint.x,
+      endPoint.y,
+    );
+    return d <= radius;
+  });
+}, [points, startPoint, endPoint, focusWidth, sliceWidth]);
 const activeTriangle = useMemo(() => {
   if (hoverTriangleId) {
     return savedTriangles.find((t) => t.id === hoverTriangleId) ?? null;
@@ -924,25 +976,36 @@ const totalTriangleArea = useMemo(() => {
   return savedTriangles.reduce((sum, triangle) => sum + triangle.area, 0);
 }, [savedTriangles]);
 
-const displayPoints = useMemo(() => {
-  if (points.length === 0) return [];
-
-  // 🔥 点数多い時だけ発動
-  if (points.length < maxDisplayPoints) {
-    return points;
+useEffect(() => {
+  if (points.length === 0) {
+    setDisplayPoints([]);
+    return;
   }
 
-  // 👉 点数に応じて自動で粗さ調整
+  if (points.length <= maxDisplayPoints) {
+    setDisplayPoints(points);
+    return;
+  }
+
   const density = points.length / maxDisplayPoints;
+  const voxelSize = Math.pow(density, 1 / 3) * 0.05;
 
-  // 🔥 voxelサイズ（これが超重要）
-const voxelSize = Math.pow(density, 1 / 3) * voxelBase;
+  const worker = new Worker(
+    new URL("../workers/pointWorker.ts", import.meta.url),
+    { type: "module" }
+  );
 
-  const downsampled = voxelDownsample(points, voxelSize);
+  worker.postMessage({ points, voxelSize });
 
-  return downsampled;
+  worker.onmessage = (event) => {
+    setDisplayPoints(event.data);
+    worker.terminate();
+  };
+
+  return () => {
+    worker.terminate();
+  };
 }, [points, maxDisplayPoints]);
-
 
   const stats = useMemo(() => {
     if (points.length === 0) return null;
@@ -1276,9 +1339,10 @@ setIsPinned(false);
 
   return (
     <div className="relative h-screen w-screen overflow-hidden bg-slate-950 text-slate-100">
-  <PointCloudCanvas
+<PointCloudCanvas
   onResetMeasuredPoints={resetMeasuredPointsOnly}
   points={displayPoints}
+  focusPoints={focusPoints}
   startPoint={startPoint}
   endPoint={endPoint}
   onPickPoint={handlePick}
@@ -1307,7 +1371,6 @@ setIsPinned(false);
   zoomSpeed={zoomSpeed}
   panSpeed={panSpeed}
   cameraLift={cameraLift}
-  
   reliefSteps={reliefSteps}
 />
 {points.length === 0 ? (
