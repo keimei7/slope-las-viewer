@@ -1,5 +1,5 @@
 "use client";
-import { buildTapeSegmentPath, computePolylineLength } from "@/lib/tape/tape-segment";
+import { computePolylineLength } from "@/lib/tape/tape-segment";
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { load } from "@loaders.gl/core";
 import { LASLoader } from "@loaders.gl/las";
@@ -68,33 +68,7 @@ type ConnectedFlatDevelopment = {
   minY: number;
   maxY: number;
 };
-type Vec3 = {
-  x: number;
-  y: number;
-  z: number;
-};
-function estimateZ(
-  x: number,
-  y: number,
-  neighbors: Vec3[]
-): number | null {
-  let sum = 0;
-  let wsum = 0;
 
-  for (const p of neighbors) {
-    const dx = p.x - x;
-    const dy = p.y - y;
-    const d = Math.sqrt(dx * dx + dy * dy);
-
-    // 近い点を強く
-    const w = 1 / (d + 0.01);
-
-    sum += p.z * w;
-    wsum += w;
-  }
-
-  return wsum > 0 ? sum / wsum : null;
-}
 
 function toPointsFromLasData(data: unknown): Point3[] {
   const rows: Point3[] = [];
@@ -205,13 +179,8 @@ function getTriangleVerticesFromLines(lines: SavedLine[]) {
   return unique;
 }
 
-function dot3(ax: number, ay: number, az: number, bx: number, by: number, bz: number) {
-  return ax * bx + ay * by + az * bz;
-}
 
-function len3(x: number, y: number, z: number) {
-  return Math.sqrt(x * x + y * y + z * z);
-}
+
 
 
 function computeTapeSamplePoints(
@@ -905,7 +874,7 @@ export default function LasViewer() {
   const [status, setStatus] = useState<LoadState>("idle");
   const [errorMessage, setErrorMessage] = useState("");
 const [cameraLift, setCameraLift] = useState(0.35);
-const [hasStartedInteraction, setHasStartedInteraction] = useState(false);
+
   const [startPoint, setStartPoint] = useState<PickedPoint | null>(null);
   const [endPoint, setEndPoint] = useState<PickedPoint | null>(null);
 const [hoverPoint, setHoverPoint] = useState<PickedPoint | null>(null);
@@ -919,6 +888,8 @@ const [hitThreshold, setHitThreshold] = useState(0.015);
 
   const [viewMode, setViewMode] = useState<ViewMode>("top");
   const [viewResetKey, setViewResetKey] = useState(0);
+  const [divisionCount, setDivisionCount] = useState(8);
+const [searchRadius, setSearchRadius] = useState(0.03);
   const [focusWidth, setFocusWidth] = useState(6);
 
 const sliceWidth = 0.01; // 1cm固定
@@ -980,43 +951,61 @@ const activeTriangle = useMemo(() => {
 const totalTriangleArea = useMemo(() => {
   return savedTriangles.reduce((sum, triangle) => sum + triangle.area, 0);
 }, [savedTriangles]);
+const displayPoints = useMemo(() => {
+  if (points.length <= maxDisplayPoints) {
+    return points;
+  }
+
+  const step = Math.ceil(points.length / maxDisplayPoints);
+  const sampled: Point3[] = [];
+
+  for (let i = 0; i < points.length; i += step) {
+    sampled.push(points[i]);
+  }
+
+  return sampled;
+}, [points, maxDisplayPoints]);
+
+const stats = useMemo(() => {
+  if (points.length === 0) return null;
+
+  let minX = Infinity;
+  let minY = Infinity;
+  let minZ = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  let maxZ = -Infinity;
+
+  for (const p of points) {
+    if (p.x < minX) minX = p.x;
+    if (p.y < minY) minY = p.y;
+    if (p.z < minZ) minZ = p.z;
+    if (p.x > maxX) maxX = p.x;
+    if (p.y > maxY) maxY = p.y;
+    if (p.z > maxZ) maxZ = p.z;
+  }
+
+  return {
+    count: points.length,
+    minX,
+    minY,
+    minZ,
+    maxX,
+    maxY,
+    maxZ,
+  };
+}, [points]);
+const pickedDistance = useMemo(() => {
+  if (!startPoint || !endPoint) return null;
+  return distance3D(startPoint, endPoint);
+}, [startPoint, endPoint]);
+
+const effectiveSearchRadius = useMemo(() => {
+  return Math.max(searchRadius, pointSize * 2.5);
+}, [searchRadius, pointSize]);
+
 const tapePoints = useMemo(() => {
   if (!startPoint || !endPoint) return [];
-
-  if (tapeSolverMode === "physics") {
-    const baseSamples = computeTapeSamplePoints(
-      points,
-      startPoint,
-      endPoint,
-      Math.max(divisionCount, 12),
-      effectiveSearchRadius,
-      sliceWidth,
-      guideMode,
-    );
-
-    const featureIndices = extractFeaturePoints(baseSamples);
-
-    const constraintIndices = [
-      0,
-      ...featureIndices,
-      baseSamples.length - 1,
-    ];
-
-    return buildTapeSegmentPath(
-      startPoint,
-      endPoint,
-      sampleTerrain,
-      {
-        segments: Math.max(baseSamples.length, 16),
-        iterations: 6,
-        cling: 0.26,
-        tension: 0.75,
-        endGrip: 0.94,
-        constraintIndices,
-        baseSamples,
-      },
-    );
-  }
 
   return computeTapeSamplePoints(
     points,
@@ -1035,55 +1024,12 @@ const tapePoints = useMemo(() => {
   effectiveSearchRadius,
   sliceWidth,
   guideMode,
-  tapeSolverMode,
-  sampleTerrain,
 ]);
-const effectiveSearchRadius = useMemo(() => {
-  return Math.max(searchRadius, pointSize * 2.5);
-}, [searchRadius, pointSize]);
-
   const tapeDistance = useMemo(() => {
   if (tapePoints.length < 2) return null;
   return computePolylineLength(tapePoints);
 }, [tapePoints]);
-function extractFeaturePoints(points: PickedPoint[]) {
-  const rawIndices: number[] = [];
 
-  for (let i = 1; i < points.length - 1; i++) {
-    const prev = points[i - 1];
-    const curr = points[i];
-    const next = points[i + 1];
-
-    const dz1 = curr.z - prev.z;
-    const dz2 = next.z - curr.z;
-
-    if (dz1 > 0 && dz2 < 0) {
-      rawIndices.push(i);
-      continue;
-    }
-
-    if (dz1 >= 0 && dz2 < -0.02) {
-      rawIndices.push(i);
-      continue;
-    }
-
-    if (Math.abs(dz2 - dz1) > 0.03) {
-      rawIndices.push(i);
-    }
-  }
-
-  rawIndices.sort((a, b) => a - b);
-
-  const filtered: number[] = [];
-  for (const index of rawIndices) {
-    const last = filtered[filtered.length - 1];
-    if (last === undefined || index - last >= 2) {
-      filtered.push(index);
-    }
-  }
-
-  return filtered;
-}
 function handlePick(point: PickedPoint) {
   const snapped = hoverSnapPoint ?? snapToExistingPoint(point, savedLines);
 
@@ -1340,7 +1286,7 @@ setPoints(parsed);
 setStatus("loaded");
 setViewResetKey((prev) => prev + 1);
 setShowInitialPointLimitOverlay(true);
-setHasStartedInteraction(false);
+
 setShowInitialPointLimitOverlay(true);
     } catch (error) {
       console.error(error);
@@ -1596,7 +1542,48 @@ setHoverSnapPoint(null);
       断面スライス幅: 1 cm
     </label>
   </div>
+<div className="mt-3">
+  <label className="block text-xs text-slate-300">
+    分割数: {divisionCount}
+  </label>
+  <input
+    type="range"
+    min={1}
+    max={50}
+    step={1}
+    value={divisionCount}
+    onChange={(e) =>
+      setDivisionCount(clamp(Number(e.target.value), 1, 50))
+    }
+    className="mt-1 w-full"
+  />
+</div>
 
+<div className="mt-3">
+  <label className="block text-xs text-slate-300">
+    近傍探索半径: {
+      effectiveSearchRadius < 1
+        ? `${(effectiveSearchRadius * 100).toFixed(0)} cm`
+        : `${effectiveSearchRadius.toFixed(2)} m`
+    }
+  </label>
+
+  <input
+    type="range"
+    min={0.0}
+    max={0.5}
+    step={0.005}
+    value={searchRadius}
+    onChange={(e) =>
+      setSearchRadius(clamp(Number(e.target.value), 0.0, 0.5))
+    }
+    className="mt-1 w-full"
+  />
+
+  <div className="mt-1 text-[11px] text-slate-500">
+    分割数と近傍探索半径を小さくすると直線距離に近づき、大きくするにつれてテープが断面に沿います。大きくしすぎると不安定になります。
+  </div>
+</div>
   <div className="mt-3 text-xs text-slate-400">
     サンプル点数: {tapePoints.length}
   </div>
