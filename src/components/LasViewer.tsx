@@ -180,6 +180,13 @@ function getTriangleVerticesFromLines(lines: SavedLine[]) {
   return unique;
 }
 
+function dot3(ax: number, ay: number, az: number, bx: number, by: number, bz: number) {
+  return ax * bx + ay * by + az * bz;
+}
+
+function len3(x: number, y: number, z: number) {
+  return Math.sqrt(x * x + y * y + z * z);
+}
 
 function computeTapeSamplePoints(
   sourcePoints: Point3[],
@@ -274,7 +281,40 @@ for (const p of corridorPoints) {
 
       // 始終点の前後に searchRadius だけ余裕
       if (along < -searchRadius || along > baseLen + searchRadius) continue;
+if (samples.length > 0) {
+  const prev = samples[samples.length - 1];
 
+  const moveDx = p.x - prev.x;
+  const moveDy = p.y - prev.y;
+  const moveDz = p.z - prev.z;
+  const moveLen = len3(moveDx, moveDy, moveDz);
+
+  if (moveLen > 1e-6) {
+    // 基本の前進軸は始点→終点
+    const forwardDot = dot3(moveDx, moveDy, 0, ux, uy, 0) / moveLen;
+
+    // 真後ろへ戻る候補は禁止
+    if (forwardDot < -0.05) continue;
+
+    // 2点以上あるときは、直前の流れも見る
+    if (samples.length > 1) {
+      const prevPrev = samples[samples.length - 2];
+      const flowDx = prev.x - prevPrev.x;
+      const flowDy = prev.y - prevPrev.y;
+      const flowDz = prev.z - prevPrev.z;
+      const flowLen = len3(flowDx, flowDy, flowDz);
+
+      if (flowLen > 1e-6) {
+        const flowDot =
+          dot3(moveDx, moveDy, moveDz, flowDx, flowDy, flowDz) /
+          (moveLen * flowLen);
+
+        // ヘアピン級の折り返しは禁止
+        if (flowDot < -0.2) continue;
+      }
+    }
+  }
+}
       // 目標位置からの前後探索は searchRadius ベース
       if (alongError > alongWindow) continue;
 
@@ -344,7 +384,17 @@ candidates.push({
         const along = px * ux + py * uy;
         const alongError = Math.abs(along - targetAlong);
         if (alongError > Math.max(searchRadius, step * 0.35)) continue;
+if (samples.length > 0) {
+  const prev = samples[samples.length - 1];
+  const prevPx = prev.x - ax;
+  const prevPy = prev.y - ay;
+  const prevAlong = prevPx * ux + prevPy * uy;
 
+  // 前の採用点より大きく後退する候補は禁止
+  if (along < prevAlong - Math.max(step * 0.25, searchRadius * 0.35)) {
+    continue;
+  }
+}
         const dz = Math.abs(p.z - targetZ);
         const fallbackScore = distXY * 0.8 + alongError * 0.1 + dz * 0.1;
 
@@ -422,18 +472,26 @@ continuityPenalty += floatPenalty * 1.8;
 
       const prevLen = Math.sqrt(prevDx * prevDx + prevDy * prevDy + prevDz * prevDz);
       const curLen = Math.sqrt(curDx * curDx + curDy * curDy + curDz * curDz);
+if (prevLen > 0 && curLen > 0) {
+  const cos =
+    (prevDx * curDx + prevDy * curDy + prevDz * curDz) /
+    (prevLen * curLen);
 
-      if (prevLen > 0 && curLen > 0) {
-        const cos =
-          (prevDx * curDx + prevDy * curDy + prevDz * curDz) /
-          (prevLen * curLen);
+  const clamped = Math.max(-1, Math.min(1, cos));
+  const bendDeg = (Math.acos(clamped) * 180) / Math.PI;
 
-        const clamped = Math.max(-1, Math.min(1, cos));
-        const bendDeg = (Math.acos(clamped) * 180) / Math.PI;
+  continuityPenalty += Math.max(0, bendDeg - 20) * 0.45;
 
-        continuityPenalty += Math.max(0, bendDeg - 20) * 0.45;
-      }
+  // ヘアピン戻りをかなり強く抑制
+  if (clamped < 0) {
+    continuityPenalty += Math.abs(clamped) * 120;
+  }
 
+  // 120度を超えるような大きい折れ返しはさらに重くする
+  if (bendDeg > 120) {
+    continuityPenalty += (bendDeg - 120) * 6.0;
+  }
+}
       const prevZStep = prevSample.z - prevPrevSample.z;
       const currentZStep = candidate.point.z - prevSample.z;
       continuityPenalty += Math.abs(currentZStep - prevZStep) * 3.2;
