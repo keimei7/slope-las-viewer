@@ -51,12 +51,12 @@ function normalize(v: Vec3): Vec3 {
   return { x: v.x / len, y: v.y / len, z: v.z / len };
 }
 
-function dot(a: Vec3, b: Vec3) {
-  return a.x * b.x + a.y * b.y + a.z * b.z;
-}
-
 function distance(a: Vec3, b: Vec3) {
   return length(sub(a, b));
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, value));
 }
 
 export function buildTapeSegmentPath(
@@ -73,10 +73,23 @@ export function buildTapeSegmentPath(
   const base = options.baseSamples ?? [];
   const fixedSet = new Set(options.constraintIndices ?? []);
 
-  const nodes: Vec3[] = [];
+  const dir = sub(end, start);
+  const baseLenXY = Math.hypot(dir.x, dir.y);
 
+  if (baseLenXY < 1e-6) {
+    return [start, end];
+  }
+
+  const ux = dir.x / baseLenXY;
+  const uy = dir.y / baseLenXY;
+
+  const nodes: Vec3[] = [];
   for (let i = 0; i <= segments; i++) {
-    nodes.push(base[i] ?? lerpVec3(start, end, i / segments));
+    if (base[i]) {
+      nodes.push({ ...base[i] });
+    } else {
+      nodes.push(lerpVec3(start, end, i / segments));
+    }
   }
 
   const restLengths: number[] = [];
@@ -85,7 +98,7 @@ export function buildTapeSegmentPath(
   }
 
   const avgRest =
-    restLengths.reduce((a, b) => a + b, 0) / Math.max(restLengths.length, 1);
+    restLengths.reduce((sum, v) => sum + v, 0) / Math.max(restLengths.length, 1);
 
   for (let iter = 0; iter < iterations; iter++) {
     for (let i = 1; i < segments; i++) {
@@ -95,109 +108,119 @@ export function buildTapeSegmentPath(
       const curr = nodes[i];
       const next = nodes[i + 1];
 
+      const t = i / segments;
+      const targetAlong = baseLenXY * t;
+
+      const spineX = start.x + ux * targetAlong;
+      const spineY = start.y + uy * targetAlong;
+
       const toPrev = sub(curr, prev);
       const toNext = sub(curr, next);
 
+      const dPrev = Math.max(length(toPrev), 1e-6);
+      const dNext = Math.max(length(toNext), 1e-6);
+
       const fixPrev = scale(
         normalize(toPrev),
-        (restLengths[i - 1] - length(toPrev)) * 0.5 * tension,
+        (restLengths[i - 1] - dPrev) * 0.5 * tension,
       );
       const fixNext = scale(
         normalize(toNext),
-        (restLengths[i] - length(toNext)) * 0.5 * tension,
+        (restLengths[i] - dNext) * 0.5 * tension,
       );
 
       let updated = add(curr, add(fixPrev, fixNext));
 
-      // ===== ヘアピン・戻り抑制 =====
-      const prevDir = normalize(sub(curr, prev));
-      const newDir = normalize(sub(updated, prev));
+      const anchor = base[i] ?? null;
+      const guideX = anchor ? anchor.x : spineX;
+      const guideY = anchor ? anchor.y : spineY;
 
-      const flowDot = dot(prevDir, newDir);
+      const edgeRatio = Math.abs(t - 0.5) * 2;
+      const xyGrip = anchor
+        ? lerp(0.55, 0.82, edgeRatio)
+        : lerp(0.32, 0.55, edgeRatio);
 
-      if (flowDot < -0.15) {
-        updated = lerpVec3(updated, curr, 0.75);
-      } else if (flowDot < 0.2) {
-        updated = lerpVec3(updated, curr, 0.35);
+      updated.x = lerp(updated.x, guideX, xyGrip);
+      updated.y = lerp(updated.y, guideY, xyGrip);
+
+      const alongRaw =
+        (updated.x - start.x) * ux +
+        (updated.y - start.y) * uy;
+
+      const prevAlong =
+        (prev.x - start.x) * ux +
+        (prev.y - start.y) * uy;
+
+      const nextAlong =
+        (next.x - start.x) * ux +
+        (next.y - start.y) * uy;
+
+      const minAlong = prevAlong + Math.max(baseLenXY / segments * 0.15, 0.005);
+      const maxAlong = nextAlong - Math.max(baseLenXY / segments * 0.15, 0.005);
+
+      let clampedAlong = alongRaw;
+      if (minAlong < maxAlong) {
+        clampedAlong = clamp(alongRaw, minAlong, maxAlong);
+      } else {
+        clampedAlong = targetAlong;
       }
 
-      // ===== 横振れ制限 =====
-      const mid = {
-        x: (prev.x + next.x) * 0.5,
-        y: (prev.y + next.y) * 0.5,
-        z: (prev.z + next.z) * 0.5,
-      };
+      const perpX = updated.x - (start.x + ux * clampedAlong);
+      const perpY = updated.y - (start.y + uy * clampedAlong);
+      const perpLen = Math.hypot(perpX, perpY);
 
-      const side = sub(updated, mid);
-      const sideLen = length(side);
-      const maxSide = Math.max(avgRest * 0.9, 0.06);
+      const maxPerp = anchor
+        ? Math.max(avgRest * 0.35, 0.03)
+        : Math.max(avgRest * 0.22, 0.02);
 
-      if (sideLen > maxSide) {
-        updated = add(mid, scale(normalize(side), maxSide));
+      let finalPerpX = perpX;
+      let finalPerpY = perpY;
+      if (perpLen > maxPerp && perpLen > 1e-6) {
+        const ratio = maxPerp / perpLen;
+        finalPerpX *= ratio;
+        finalPerpY *= ratio;
       }
 
-      // ===== 全体方向制限 =====
-      const globalDir = normalize(sub(end, start));
-      const moveDir = normalize({
-        x: updated.x - curr.x,
-        y: updated.y - curr.y,
-        z: 0,
-      });
+      updated.x = start.x + ux * clampedAlong + finalPerpX;
+      updated.y = start.y + uy * clampedAlong + finalPerpY;
 
-      const globalDot = dot(moveDir, {
-        x: globalDir.x,
-        y: globalDir.y,
-        z: 0,
-      });
+      const terrain = sampleTerrain(updated.x, updated.y);
+      if (terrain.z !== null) {
+        const skin = 0.003;
+        const minAllowedZ = terrain.z + skin;
+        const localGrip = lerp(cling, endGrip, edgeRatio);
 
-      if (globalDot < -0.05) {
-        updated = lerpVec3(updated, curr, 0.8);
+        if (updated.z < minAllowedZ) {
+          updated.z = minAllowedZ;
+        } else {
+          updated.z = lerp(updated.z, minAllowedZ, 0.45 + localGrip * 0.35);
+        }
+      } else {
+        const lineBase = lerpVec3(start, end, t);
+        updated.z = lerp(updated.z, lineBase.z, 0.35);
       }
 
-      // ===== z暴れ抑制 =====
       const maxDeltaZ = Math.max(avgRest * 0.45, 0.08);
       const dz = updated.z - curr.z;
-
       if (Math.abs(dz) > maxDeltaZ) {
         updated.z = curr.z + Math.sign(dz) * maxDeltaZ;
       }
 
-      // ===== 移動量制限 =====
-      const move = sub(updated, curr);
-      const moveLen = length(move);
-      const maxMove = Math.max(avgRest * 0.35, 0.04);
+      const moveDx = updated.x - curr.x;
+      const moveDy = updated.y - curr.y;
+      const moveDz = updated.z - curr.z;
+      const moveDist = Math.sqrt(
+        moveDx * moveDx + moveDy * moveDy + moveDz * moveDz,
+      );
 
-      if (moveLen > maxMove) {
-        updated = add(curr, scale(normalize(move), maxMove));
-      }
-
-      // ===== 直線戻し =====
-      const t = i / segments;
-      const baseLine = lerpVec3(start, end, t);
-      const edge = Math.abs(t - 0.5) * 2;
-      const lineReturn = lerp(0.12, 0.24, edge);
-
-      updated.x = lerp(updated.x, baseLine.x, lineReturn);
-      updated.y = lerp(updated.y, baseLine.y, lineReturn);
-
-      // ===== base拘束 =====
-      if (base[i]) {
-        updated.x = lerp(updated.x, base[i].x, 0.82);
-        updated.y = lerp(updated.y, base[i].y, 0.82);
-      }
-
-      // ===== 地形拘束 =====
-      const terrain = sampleTerrain(updated.x, updated.y);
-      if (terrain.z !== null) {
-        const minZ = terrain.z + 0.003;
-
-        if (updated.z < minZ) {
-          updated.z = minZ;
-        } else {
-          const edgeRatio = Math.abs(t - 0.5) * 2;
-          const grip = lerp(cling, endGrip, edgeRatio);
-          updated.z = lerp(updated.z, minZ, grip * 0.12);
-        }
+      const maxMove = Math.max(avgRest * 0.45, 0.05);
+      if (moveDist > maxMove) {
+        const ratio = maxMove / moveDist;
+        updated = {
+          x: curr.x + moveDx * ratio,
+          y: curr.y + moveDy * ratio,
+          z: curr.z + moveDz * ratio,
+        };
       }
 
       nodes[i] = updated;
