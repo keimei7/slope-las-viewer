@@ -187,7 +187,113 @@ function dot3(ax: number, ay: number, az: number, bx: number, by: number, bz: nu
 function len3(x: number, y: number, z: number) {
   return Math.sqrt(x * x + y * y + z * z);
 }
+function estimateRoughness(
+  sourcePoints: Point3[],
+  startPoint: PickedPoint,
+  endPoint: PickedPoint,
+  sampleCount = 12,
+  probeRadius = 0.12,
+): number {
+  const dx = endPoint.x - startPoint.x;
+  const dy = endPoint.y - startPoint.y;
+  const baseLen = Math.sqrt(dx * dx + dy * dy);
+  if (baseLen < 1e-6) return 0;
 
+  const ux = dx / baseLen;
+  const uy = dy / baseLen;
+
+  const zs: number[] = [];
+
+  for (let i = 0; i <= sampleCount; i++) {
+    const t = i / sampleCount;
+    const x = startPoint.x + dx * t;
+    const y = startPoint.y + dy * t;
+
+    const near: number[] = [];
+    const r2 = probeRadius * probeRadius;
+
+    for (const p of sourcePoints) {
+      const ddx = p.x - x;
+      const ddy = p.y - y;
+      const d2 = ddx * ddx + ddy * ddy;
+      if (d2 <= r2) near.push(p.z);
+    }
+
+    if (near.length === 0) {
+      zs.push(startPoint.z + (endPoint.z - startPoint.z) * t);
+      continue;
+    }
+
+    near.sort((a, b) => a - b);
+    zs.push(near[Math.floor(near.length * 0.5)]);
+  }
+
+  if (zs.length < 3) return 0;
+
+  let roughness = 0;
+  for (let i = 1; i < zs.length - 1; i++) {
+    const dz1 = zs[i] - zs[i - 1];
+    const dz2 = zs[i + 1] - zs[i];
+    roughness += Math.abs(dz2 - dz1);
+  }
+
+  // 距離依存を少し抑えて 0〜1 くらいに圧縮
+  return clamp(roughness / Math.max(baseLen, 1), 0, 1.2);
+}
+
+function computeAutoTapeParams(
+  sourcePoints: Point3[],
+  startPoint: PickedPoint | null,
+  endPoint: PickedPoint | null,
+  frequencyBias: number,
+) {
+  if (!startPoint || !endPoint) {
+    return {
+      straightDistance: 0,
+      roughness: 0,
+      divisionCount: 15,
+      searchRadius: 0.18,
+      lockRatio: 0.72,
+    };
+  }
+
+  const straightDistance = distance3D(startPoint, endPoint);
+  const roughness = estimateRoughness(sourcePoints, startPoint, endPoint);
+
+  // 0〜1
+  const freq = clamp(frequencyBias / 100, 0, 1);
+
+  // 最低15分割を床にする
+  // 長さ + 起伏 + ユーザー周波数を合成
+  const baseSegments =
+    15 +
+    straightDistance * 1.1 +
+    roughness * 18 +
+    freq * 12;
+
+  const divisionCount = clamp(Math.round(baseSegments), 15, 50);
+
+  const step = Math.max(straightDistance / Math.max(divisionCount, 1), 0.01);
+
+  // 探索半径は裏に隠す
+  // 分割数が高いほど少し絞り、起伏が強いほど少し広げる
+  const searchRadius = clamp(
+    step * (0.9 - freq * 0.18) + roughness * 0.12,
+    0.18,
+    0.45,
+  );
+
+  // 周波数高めほど target から離れて実点側へ寄せる
+  const lockRatio = clamp(0.9 - freq * 0.28, 0.55, 0.92);
+
+  return {
+    straightDistance,
+    roughness,
+    divisionCount,
+    searchRadius,
+    lockRatio,
+  };
+}
 function computeTapeSamplePoints(
   sourcePoints: Point3[],
   startPoint: PickedPoint | null,
@@ -196,7 +302,8 @@ function computeTapeSamplePoints(
   searchRadius: number,
   sliceWidth: number,
   guideMode: GuideMode,
-):
+  lockRatioOverride?: number,
+): PickedPoint[] {
 
 PickedPoint[] {
   if (!startPoint || !endPoint) return [];
@@ -420,15 +527,15 @@ if (samples.length > 0) {
       }
 
       if (fallback) {
-      let lockRatio = 0.72;
-
-if (guideMode === "horizontal") {
-  lockRatio = 0.97;
-} else if (guideMode === "vertical") {
-  lockRatio = 0.55;
-} else if (guideMode === "angled") {
-  lockRatio = 0.88;
-}
+      let lockRatio =
+  lockRatioOverride ??
+  (guideMode === "horizontal"
+    ? 0.97
+    : guideMode === "vertical"
+      ? 0.55
+      : guideMode === "angled"
+        ? 0.88
+        : 0.72);
         samples.push({
           x: targetX * lockRatio + fallback.x * (1 - lockRatio),
           y: targetY * lockRatio + fallback.y * (1 - lockRatio),
@@ -521,15 +628,15 @@ if (prevLen > 0 && curLen > 0) {
       }
     }
 
-  let lockRatio = 0.72;
-
-if (guideMode === "horizontal") {
-  lockRatio = 0.97;
-} else if (guideMode === "vertical") {
-  lockRatio = 0.55;
-} else if (guideMode === "angled") {
-  lockRatio = 0.88;
-}
+let lockRatio =
+  lockRatioOverride ??
+  (guideMode === "horizontal"
+    ? 0.97
+    : guideMode === "vertical"
+      ? 0.55
+      : guideMode === "angled"
+        ? 0.88
+        : 0.72);
     samples.push({
       x: targetX * lockRatio + chosen.point.x * (1 - lockRatio),
       y: targetY * lockRatio + chosen.point.y * (1 - lockRatio),
@@ -943,6 +1050,7 @@ function handlePrintDevelopment() {
   window.print();
 }
 export default function LasViewer() {
+const [frequencyBias, setFrequencyBias] = useState(50);
 
   const [tapeSolverMode, setTapeSolverMode] = useState<"legacy" | "physics">("legacy");
 
@@ -1082,6 +1190,14 @@ const displayPoints = useMemo(() => {
 const effectiveSearchRadius = useMemo(() => {
   return Math.max(searchRadius, pointSize * 2.5);
 }, [searchRadius, pointSize]);
+const autoTapeParams = useMemo(() => {
+  return computeAutoTapeParams(
+    points,
+    startPoint,
+    endPoint,
+    frequencyBias,
+  );
+}, [points, startPoint, endPoint, frequencyBias]);
 const sampleTerrain = useMemo(() => {
   return (x: number, y: number) => {
     const r = Math.max(sliceWidth * 3, 0.03);
@@ -1111,16 +1227,16 @@ const tapePoints = useMemo(() => {
   if (!startPoint || !endPoint) return [];
 
    if (tapeSolverMode === "physics") {
-    const baseSamples = computeTapeSamplePoints(
-      points,
-      startPoint,
-      endPoint,
-      Math.max(divisionCount, 12),
-      effectiveSearchRadius,
-      sliceWidth,
-      guideMode,
-    );
-
+  const baseSamples = computeTapeSamplePoints(
+  points,
+  startPoint,
+  endPoint,
+  Math.max(autoTapeParams.divisionCount, 12),
+  autoTapeParams.searchRadius,
+  sliceWidth,
+  guideMode,
+  autoTapeParams.lockRatio,
+);
     const featureIndices = extractFeaturePoints(baseSamples);
 
     const constraintIndices = [
@@ -1145,15 +1261,16 @@ const tapePoints = useMemo(() => {
     );
   }
 
-  return computeTapeSamplePoints(
-    points,
-    startPoint,
-    endPoint,
-    divisionCount,
-    effectiveSearchRadius,
-    sliceWidth,
-    guideMode,
-  );
+ return computeTapeSamplePoints(
+  points,
+  startPoint,
+  endPoint,
+  autoTapeParams.divisionCount,
+  autoTapeParams.searchRadius,
+  sliceWidth,
+  guideMode,
+  autoTapeParams.lockRatio,
+);
 }, [
   points,
   startPoint,
@@ -1709,6 +1826,30 @@ setHoverSnapPoint(null);
   <div className="text-xs font-semibold uppercase tracking-wide text-cyan-100/80">
     テープ設定
   </div>
+<div className="mt-3">
+  <label className="block text-xs text-slate-300">
+    沿わせ周波数: {frequencyBias}
+  </label>
+  <input
+    type="range"
+    min={0}
+    max={100}
+    step={1}
+    value={frequencyBias}
+    onChange={(e) =>
+      setFrequencyBias(clamp(Number(e.target.value), 0, 100))
+    }
+    className="mt-1 w-full"
+  />
+  <div className="mt-1 text-[11px] text-slate-500">
+    低いほど大きい起伏だけを拾い、高いほど細かい起伏まで追従します。
+  </div>
+</div><div className="mt-3 rounded-lg border border-white/10 bg-white/5 p-2 text-[11px] text-slate-400 space-y-1">
+  <div>自動分割数: {autoTapeParams.divisionCount}</div>
+  <div>自動探索半径: {(autoTapeParams.searchRadius * 100).toFixed(0)} cm</div>
+  <div>roughness: {autoTapeParams.roughness.toFixed(3)}</div>
+  <div>lockRatio: {autoTapeParams.lockRatio.toFixed(2)}</div>
+</div>
 
   <div className="mt-3">
     <label className="block text-xs text-slate-300">
