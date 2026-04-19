@@ -224,7 +224,7 @@ const samples: PickedPoint[] = [];
 const step = baseLen / divisionCount;
 
 // 近傍半径は「前後方向の探索余裕」として使う
-const alongWindow = Math.max(searchRadius, step * 0.2);
+const alongWindow = step * 0.8;
 const corridorWidth = Math.max(sliceWidth * 2.5, searchRadius * 1.2);
 const jumpAllowance = Math.max(step * 1.8, searchRadius * 1.5);
 
@@ -334,7 +334,7 @@ if (samples.length > 0) {
       if (alongError > alongWindow) continue;
 
       // 断面幅は 1cm 固定で、横ブレを厳しく制限
-      if (perpDist > sliceWidth) continue;
+     if (perpDist > Math.min(sliceWidth, step * 0.6)) continue;
       if (samples.length > 0) {
   const prev = samples[samples.length - 1];
   const jumpDx = p.x - prev.x;
@@ -345,7 +345,7 @@ if (samples.length > 0) {
   );
 
 
-if (jumpDist > jumpAllowance) continue;
+if (jumpDist > step * 1.5) continue;
 }
 const targetZError = Math.abs(p.z - targetZ);
 
