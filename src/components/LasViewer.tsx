@@ -215,7 +215,13 @@ function computeTapeSamplePoints(
 
   const samples: PickedPoint[] = [];
   const step = baseLen / divisionCount;
-  const alongWindow = Math.max(searchRadius, step * 0.2);
+
+  // 距離比例の補正
+  const distanceUnits = baseLen / 0.1; // 10cm単位
+  const followFactor = 1 + distanceUnits * 0.0035;
+  const lockFactor = 1 + distanceUnits * 0.0020;
+
+  const alongWindow = Math.max(searchRadius * followFactor, step * 0.2);
 
   for (let i = 0; i <= divisionCount; i++) {
     if (i === 0) {
@@ -287,7 +293,12 @@ function computeTapeSamplePoints(
           jumpDx * jumpDx + jumpDy * jumpDy + jumpDz * jumpDz
         );
 
-        if (jumpDist > Math.max(step * 1.8, searchRadius * 1.5)) continue;
+        const jumpLimit = Math.max(
+          step * (1.8 * followFactor),
+          searchRadius * (1.5 * followFactor)
+        );
+
+        if (jumpDist > jumpLimit) continue;
       }
 
       const targetZError = Math.abs(p.z - targetZ);
@@ -339,7 +350,7 @@ function computeTapeSamplePoints(
         const py = p.y - ay;
         const along = px * ux + py * uy;
         const alongError = Math.abs(along - targetAlong);
-        if (alongError > Math.max(searchRadius, step * 0.35)) continue;
+        if (alongError > Math.max(searchRadius * followFactor, step * 0.35)) continue;
 
         const dz = Math.abs(p.z - targetZ);
         const fallbackScore = distXY * 0.8 + alongError * 0.1 + dz * 0.1;
@@ -351,15 +362,21 @@ function computeTapeSamplePoints(
       }
 
       if (fallback) {
-        let lockRatio = 0.72;
+        let baseLockRatio = 0.72;
 
         if (guideMode === "horizontal") {
-          lockRatio = 0.97;
+          baseLockRatio = 0.97;
         } else if (guideMode === "vertical") {
-          lockRatio = 0.55;
+          baseLockRatio = 0.55;
         } else if (guideMode === "angled") {
-          lockRatio = 0.88;
+          baseLockRatio = 0.88;
         }
+
+        const lockRatio = clamp(
+          baseLockRatio + (lockFactor - 1) * 0.08,
+          0.55,
+          0.92
+        );
 
         samples.push({
           x: targetX * lockRatio + fallback.x * (1 - lockRatio),
@@ -395,15 +412,15 @@ function computeTapeSamplePoints(
 
         if (prevSample) {
           const dz = candidate.point.z - prevSample.z;
-          continuityPenalty += Math.abs(dz) * 2.0;
+          continuityPenalty += Math.abs(dz) * (2.0 / followFactor);
 
           const ddx = candidate.point.x - prevSample.x;
           const ddy = candidate.point.y - prevSample.y;
           const stepDist = Math.sqrt(ddx * ddx + ddy * ddy);
-          continuityPenalty += Math.abs(stepDist - step) * 0.8;
+          continuityPenalty += Math.abs(stepDist - step) * (0.8 / followFactor);
 
           const floatPenalty = Math.abs(candidate.point.z - targetZ);
-          continuityPenalty += floatPenalty * 1.8;
+          continuityPenalty += floatPenalty * (1.8 / followFactor);
         }
 
         if (prevSample && prevPrevSample) {
@@ -426,12 +443,13 @@ function computeTapeSamplePoints(
             const clamped = Math.max(-1, Math.min(1, cos));
             const bendDeg = (Math.acos(clamped) * 180) / Math.PI;
 
-            continuityPenalty += Math.max(0, bendDeg - 20) * 0.45;
+            continuityPenalty += Math.max(0, bendDeg - 20) * (0.45 / followFactor);
           }
 
           const prevZStep = prevSample.z - prevPrevSample.z;
           const currentZStep = candidate.point.z - prevSample.z;
-          continuityPenalty += Math.abs(currentZStep - prevZStep) * 3.2;
+          continuityPenalty +=
+            Math.abs(currentZStep - prevZStep) * (3.2 / followFactor);
         }
 
         const totalScore = candidate.score + continuityPenalty;
@@ -443,15 +461,21 @@ function computeTapeSamplePoints(
       }
     }
 
-    let lockRatio = 0.72;
+    let baseLockRatio = 0.72;
 
     if (guideMode === "horizontal") {
-      lockRatio = 0.97;
+      baseLockRatio = 0.97;
     } else if (guideMode === "vertical") {
-      lockRatio = 0.55;
+      baseLockRatio = 0.55;
     } else if (guideMode === "angled") {
-      lockRatio = 0.88;
+      baseLockRatio = 0.88;
     }
+
+    const lockRatio = clamp(
+      baseLockRatio + (lockFactor - 1) * 0.08,
+      0.55,
+      0.92
+    );
 
     samples.push({
       x: targetX * lockRatio + chosen.point.x * (1 - lockRatio),
