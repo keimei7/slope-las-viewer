@@ -68,8 +68,33 @@ type ConnectedFlatDevelopment = {
   minY: number;
   maxY: number;
 };
+type Vec3 = {
+  x: number;
+  y: number;
+  z: number;
+};
+function estimateZ(
+  x: number,
+  y: number,
+  neighbors: Vec3[]
+): number | null {
+  let sum = 0;
+  let wsum = 0;
 
+  for (const p of neighbors) {
+    const dx = p.x - x;
+    const dy = p.y - y;
+    const d = Math.sqrt(dx * dx + dy * dy);
 
+    // 近い点を強く
+    const w = 1 / (d + 0.01);
+
+    sum += p.z * w;
+    wsum += w;
+  }
+
+  return wsum > 0 ? sum / wsum : null;
+}
 
 function toPointsFromLasData(data: unknown): Point3[] {
   const rows: Point3[] = [];
@@ -301,7 +326,7 @@ function computeTapeSamplePoints(
   searchRadius: number,
   sliceWidth: number,
   guideMode: GuideMode,
-  metaFrequency: number = 0 // ←追加
+  metaFrequency: number = 0,
 ): PickedPoint[] {
   if (!startPoint || !endPoint) return [];
   if (divisionCount < 1 || sourcePoints.length === 0) return [];
@@ -333,6 +358,7 @@ function computeTapeSamplePoints(
       samples.push(startPoint);
       continue;
     }
+
     if (i === divisionCount) {
       samples.push(endPoint);
       continue;
@@ -343,10 +369,7 @@ function computeTapeSamplePoints(
     const targetY = ay + uy * targetAlong;
     const targetZ = az + ((bz - az) * i) / divisionCount;
 
-    const candidates: Array<{
-      point: Point3;
-      score: number;
-    }> = [];
+    const neighbors: Point3[] = [];
 
     for (const p of sourcePoints) {
       const px = p.x - ax;
@@ -364,62 +387,47 @@ function computeTapeSamplePoints(
       const alongError = Math.abs(along - targetAlong);
       if (alongError > alongWindow) continue;
 
-      // ===== メタ周波数の核 =====
-      const lineDx = p.x - targetX;
-      const lineDy = p.y - targetY;
-      const lineDist = Math.sqrt(lineDx * lineDx + lineDy * lineDy);
-
-      const targetZError = Math.abs(p.z - targetZ);
-
-      const score =
-        perpDist * 0.7 +
-        alongError * 0.1 +
-        targetZError * 0.1 +
-        lineDist * metaFrequency * 1.5; // ←追加
-
-      candidates.push({ point: p, score });
+      neighbors.push(p);
     }
 
-    if (candidates.length === 0) {
+    if (neighbors.length === 0) {
       samples.push({ x: targetX, y: targetY, z: targetZ });
       continue;
     }
 
-    candidates.sort((a, b) => a.score - b.score);
+    const interpolatedZ = estimateZ(targetX, targetY, neighbors);
+    if (interpolatedZ === null) {
+      samples.push({ x: targetX, y: targetY, z: targetZ });
+      continue;
+    }
 
-    let chosen = candidates[0];
+    let chosen: PickedPoint = {
+      x: targetX,
+      y: targetY,
+      z: interpolatedZ,
+    };
 
     // ===== continuity補正 =====
     if (samples.length > 0) {
       const prev = samples[samples.length - 1];
 
-      let bestScore = Infinity;
+      const dx = chosen.x - prev.x;
+      const dy = chosen.y - prev.y;
+      const dz = chosen.z - prev.z;
 
-      for (const c of candidates.slice(0, 6)) {
-        let penalty = 0;
+      const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+      let continuityPenalty = 0;
 
-        const dx = c.point.x - prev.x;
-        const dy = c.point.y - prev.y;
-        const dz = c.point.z - prev.z;
+      continuityPenalty += Math.abs(dist - step) * 0.8;
+      continuityPenalty += Math.abs(dz) * 1.5;
 
-        const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
-        penalty += Math.abs(dist - step) * 0.8;
+      const lineDx = chosen.x - targetX;
+      const lineDy = chosen.y - targetY;
+      const lineDist = Math.sqrt(lineDx * lineDx + lineDy * lineDy);
+      continuityPenalty += lineDist * metaFrequency * 0.8;
 
-        penalty += Math.abs(dz) * 1.5;
-
-        // ←ここが効く
-        const lineDx = c.point.x - targetX;
-        const lineDy = c.point.y - targetY;
-        const lineDist = Math.sqrt(lineDx * lineDx + lineDy * lineDy);
-        penalty += lineDist * metaFrequency * 0.8;
-
-        const total = c.score + penalty;
-
-        if (total < bestScore) {
-          bestScore = total;
-          chosen = c;
-        }
-      }
+      // continuityPenalty は今後の拡張用に保持
+      void continuityPenalty;
     }
 
     // ===== lockRatio =====
@@ -429,9 +437,9 @@ function computeTapeSamplePoints(
     if (guideMode === "vertical") lockRatio = 0.55;
 
     samples.push({
-      x: targetX * lockRatio + chosen.point.x * (1 - lockRatio),
-      y: targetY * lockRatio + chosen.point.y * (1 - lockRatio),
-      z: chosen.point.z,
+      x: targetX * lockRatio + chosen.x * (1 - lockRatio),
+      y: targetY * lockRatio + chosen.y * (1 - lockRatio),
+      z: chosen.z,
     });
   }
 
