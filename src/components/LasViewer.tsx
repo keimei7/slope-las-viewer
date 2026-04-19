@@ -305,7 +305,6 @@ function computeTapeSamplePoints(
   lockRatioOverride?: number,
 ): PickedPoint[] {
 
-PickedPoint[] {
   if (!startPoint || !endPoint) return [];
   if (divisionCount < 1 || sourcePoints.length === 0) return [];
 
