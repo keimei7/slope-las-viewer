@@ -302,9 +302,8 @@ function computeTapeSamplePoints(
   searchRadius: number,
   sliceWidth: number,
   guideMode: GuideMode,
-  lockRatioOverride?: number,
+  metaFrequency: number = 0 // ←追加
 ): PickedPoint[] {
-
   if (!startPoint || !endPoint) return [];
   if (divisionCount < 1 || sourcePoints.length === 0) return [];
 
@@ -326,316 +325,110 @@ function computeTapeSamplePoints(
   const ux = dx / baseLen;
   const uy = dy / baseLen;
 
-const samples: PickedPoint[] = [];
-const step = baseLen / divisionCount;
+  const samples: PickedPoint[] = [];
+  const step = baseLen / divisionCount;
+  const alongWindow = Math.max(searchRadius, step * 0.2);
 
-// 近傍半径は「前後方向の探索余裕」として使う
-const alongWindow = step * 0.8;
-const corridorWidth = Math.max(sliceWidth * 2.5, searchRadius * 1.2);
-const jumpAllowance = Math.max(step * 1.8, searchRadius * 1.5);
-
-console.log("[tape debug]", {
-  divisionCount,
-  searchRadius,
-  step,
-  alongWindow,
-  corridorWidth,
-  jumpAllowance,
-  baseLen,
-  guideMode,
-});
   for (let i = 0; i <= divisionCount; i++) {
     if (i === 0) {
-  samples.push({
-    x: startPoint.x,
-    y: startPoint.y,
-    z: startPoint.z,
-  });
-  continue;
-}
+      samples.push(startPoint);
+      continue;
+    }
+    if (i === divisionCount) {
+      samples.push(endPoint);
+      continue;
+    }
 
-if (i === divisionCount) {
-  samples.push({
-    x: endPoint.x,
-    y: endPoint.y,
-    z: endPoint.z,
-  });
-  continue;
-}
-const corridorPoints = sourcePoints.filter((p) => {
-  const px = p.x - ax;
-  const py = p.y - ay;
-
-  const along = px * ux + py * uy;
-  if (along < -searchRadius || along > baseLen + searchRadius) return false;
-
-  const perpX = px - along * ux;
-  const perpY = py - along * uy;
-  const perpDist = Math.sqrt(perpX * perpX + perpY * perpY);
-
-  const corridorWidth = Math.max(sliceWidth * 2.5, searchRadius * 1.2);
-return perpDist <= corridorWidth;
-});
     const targetAlong = step * i;
     const targetX = ax + ux * targetAlong;
     const targetY = ay + uy * targetAlong;
     const targetZ = az + ((bz - az) * i) / divisionCount;
 
-  const candidates: Array<{
-  point: Point3;
-  alongError: number;
-  perpDist: number;
-  targetZError: number;
-  target3DDist: number;
-  score: number;
-}> = [];
+    const candidates: Array<{
+      point: Point3;
+      score: number;
+    }> = [];
 
-for (const p of corridorPoints) {
-        const px = p.x - ax;
+    for (const p of sourcePoints) {
+      const px = p.x - ax;
       const py = p.y - ay;
 
       const along = px * ux + py * uy;
+      if (along < -searchRadius || along > baseLen + searchRadius) continue;
+
       const perpX = px - along * ux;
       const perpY = py - along * uy;
       const perpDist = Math.sqrt(perpX * perpX + perpY * perpY);
+
+      if (perpDist > sliceWidth) continue;
+
       const alongError = Math.abs(along - targetAlong);
-
-      // 始終点の前後に searchRadius だけ余裕
-      if (along < -searchRadius || along > baseLen + searchRadius) continue;
-if (samples.length > 0) {
-  const prev = samples[samples.length - 1];
-
-  const moveDx = p.x - prev.x;
-  const moveDy = p.y - prev.y;
-  const moveDz = p.z - prev.z;
-  const moveLen = len3(moveDx, moveDy, moveDz);
-
-  if (moveLen > 1e-6) {
-    // 基本の前進軸は始点→終点
-    const forwardDot = dot3(moveDx, moveDy, 0, ux, uy, 0) / moveLen;
-
-    // 真後ろへ戻る候補は禁止
-    if (forwardDot < -0.05) continue;
-
-    // 2点以上あるときは、直前の流れも見る
-    if (samples.length > 1) {
-      const prevPrev = samples[samples.length - 2];
-      const flowDx = prev.x - prevPrev.x;
-      const flowDy = prev.y - prevPrev.y;
-      const flowDz = prev.z - prevPrev.z;
-      const flowLen = len3(flowDx, flowDy, flowDz);
-
-      if (flowLen > 1e-6) {
-        const flowDot =
-          dot3(moveDx, moveDy, moveDz, flowDx, flowDy, flowDz) /
-          (moveLen * flowLen);
-
-        // ヘアピン級の折り返しは禁止
-        if (flowDot < -0.2) continue;
-      }
-    }
-  }
-}
-      // 目標位置からの前後探索は searchRadius ベース
       if (alongError > alongWindow) continue;
 
-      // 断面幅は 1cm 固定で、横ブレを厳しく制限
-     if (perpDist > Math.min(sliceWidth, step * 0.6)) continue;
-      if (samples.length > 0) {
-  const prev = samples[samples.length - 1];
-  const jumpDx = p.x - prev.x;
-  const jumpDy = p.y - prev.y;
-  const jumpDz = p.z - prev.z;
-  const jumpDist = Math.sqrt(
-    jumpDx * jumpDx + jumpDy * jumpDy + jumpDz * jumpDz
-  );
+      // ===== メタ周波数の核 =====
+      const lineDx = p.x - targetX;
+      const lineDy = p.y - targetY;
+      const lineDist = Math.sqrt(lineDx * lineDx + lineDy * lineDy);
 
+      const targetZError = Math.abs(p.z - targetZ);
 
-if (jumpDist > step * 1.5) continue;
-}
-const targetZError = Math.abs(p.z - targetZ);
+      const score =
+        perpDist * 0.7 +
+        alongError * 0.1 +
+        targetZError * 0.1 +
+        lineDist * metaFrequency * 1.5; // ←追加
 
-const dx3 = p.x - targetX;
-const dy3 = p.y - targetY;
-const dz3 = p.z - targetZ;
-const target3DDist = Math.sqrt(dx3 * dx3 + dy3 * dy3 + dz3 * dz3);
-
-const perpWeight =
-  guideMode === "horizontal"
-    ? 0.72
-    : guideMode === "angled"
-      ? 0.68
-      : 0.62;
-
-const alongWeight = guideMode === "vertical" ? 0.10 : 0.08;
-const zWeight = 0.10;
-const shapeWeight = 1 - perpWeight - alongWeight - zWeight;
-
-const score =
-  perpDist * perpWeight +
-  alongError * alongWeight +
-  targetZError * zWeight +
-  target3DDist * shapeWeight;
-
-candidates.push({
-  point: p,
-  alongError,
-  perpDist,
-  targetZError,
-  target3DDist,
-  score,
-});
+      candidates.push({ point: p, score });
     }
 
     if (candidates.length === 0) {
-      let fallback: Point3 | null = null;
-      let bestScore = Number.POSITIVE_INFINITY;
-
-      for (const p of sourcePoints) {
-        const ddx = p.x - targetX;
-        const ddy = p.y - targetY;
-        const distXY = Math.sqrt(ddx * ddx + ddy * ddy);
-
-        // fallback でも横方向は 1cm に抑える
-        if (distXY > sliceWidth) continue;
-
-        // 前後方向は searchRadius だけ許す
-        const px = p.x - ax;
-        const py = p.y - ay;
-        const along = px * ux + py * uy;
-        const alongError = Math.abs(along - targetAlong);
-        if (alongError > Math.max(searchRadius, step * 0.35)) continue;
-if (samples.length > 0) {
-  const prev = samples[samples.length - 1];
-  const prevPx = prev.x - ax;
-  const prevPy = prev.y - ay;
-  const prevAlong = prevPx * ux + prevPy * uy;
-
-  // 前の採用点より大きく後退する候補は禁止
-  if (along < prevAlong - Math.max(step * 0.25, searchRadius * 0.35)) {
-    continue;
-  }
-}
-        const dz = Math.abs(p.z - targetZ);
-        const fallbackScore = distXY * 0.8 + alongError * 0.1 + dz * 0.1;
-
-        if (fallbackScore < bestScore) {
-          fallback = p;
-          bestScore = fallbackScore;
-        }
-      }
-
-      if (fallback) {
-      let lockRatio =
-  lockRatioOverride ??
-  (guideMode === "horizontal"
-    ? 0.97
-    : guideMode === "vertical"
-      ? 0.55
-      : guideMode === "angled"
-        ? 0.88
-        : 0.72);
-        samples.push({
-          x: targetX * lockRatio + fallback.x * (1 - lockRatio),
-          y: targetY * lockRatio + fallback.y * (1 - lockRatio),
-          z: fallback.z,
-        });
-      } else {
-        samples.push({
-          x: targetX,
-          y: targetY,
-          z: targetZ,
-        });
-      }
-
+      samples.push({ x: targetX, y: targetY, z: targetZ });
       continue;
     }
 
     candidates.sort((a, b) => a.score - b.score);
-    const top = candidates.slice(0, Math.min(candidates.length, 8));
 
-    let chosen = top[0];
+    let chosen = candidates[0];
 
-if (top.length > 1) {
-  const prevSample =
-    samples.length > 0 ? samples[samples.length - 1] : null;
-  const prevPrevSample =
-    samples.length > 1 ? samples[samples.length - 2] : null;
+    // ===== continuity補正 =====
+    if (samples.length > 0) {
+      const prev = samples[samples.length - 1];
 
-  let bestContinuityScore = Number.POSITIVE_INFINITY;
+      let bestScore = Infinity;
 
-  for (const candidate of top) {
-    let continuityPenalty = 0;
+      for (const c of candidates.slice(0, 6)) {
+        let penalty = 0;
 
-    if (prevSample) {
-      const dz = candidate.point.z - prevSample.z;
-      continuityPenalty += Math.abs(dz) * 2.0;
+        const dx = c.point.x - prev.x;
+        const dy = c.point.y - prev.y;
+        const dz = c.point.z - prev.z;
 
-      const ddx = candidate.point.x - prevSample.x;
-      const ddy = candidate.point.y - prevSample.y;
-      const stepDist = Math.sqrt(ddx * ddx + ddy * ddy);
-      continuityPenalty += Math.abs(stepDist - step) * 0.8;
-      const midTargetZ =
-  targetZ;
+        const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+        penalty += Math.abs(dist - step) * 0.8;
 
-const floatPenalty = Math.abs(candidate.point.z - midTargetZ);
-continuityPenalty += floatPenalty * 1.8;
-    }
+        penalty += Math.abs(dz) * 1.5;
 
-    if (prevSample && prevPrevSample) {
-      const prevDx = prevSample.x - prevPrevSample.x;
-      const prevDy = prevSample.y - prevPrevSample.y;
-      const prevDz = prevSample.z - prevPrevSample.z;
+        // ←ここが効く
+        const lineDx = c.point.x - targetX;
+        const lineDy = c.point.y - targetY;
+        const lineDist = Math.sqrt(lineDx * lineDx + lineDy * lineDy);
+        penalty += lineDist * metaFrequency * 2.0;
 
-      const curDx = candidate.point.x - prevSample.x;
-      const curDy = candidate.point.y - prevSample.y;
-      const curDz = candidate.point.z - prevSample.z;
+        const total = c.score + penalty;
 
-      const prevLen = Math.sqrt(prevDx * prevDx + prevDy * prevDy + prevDz * prevDz);
-      const curLen = Math.sqrt(curDx * curDx + curDy * curDy + curDz * curDz);
-if (prevLen > 0 && curLen > 0) {
-  const cos =
-    (prevDx * curDx + prevDy * curDy + prevDz * curDz) /
-    (prevLen * curLen);
-
-  const clamped = Math.max(-1, Math.min(1, cos));
-  const bendDeg = (Math.acos(clamped) * 180) / Math.PI;
-
-  continuityPenalty += Math.max(0, bendDeg - 20) * 0.45;
-
-  // ヘアピン戻りをかなり強く抑制
-  if (clamped < 0) {
-    continuityPenalty += Math.abs(clamped) * 120;
-  }
-
-  // 120度を超えるような大きい折れ返しはさらに重くする
-  if (bendDeg > 120) {
-    continuityPenalty += (bendDeg - 120) * 6.0;
-  }
-}
-      const prevZStep = prevSample.z - prevPrevSample.z;
-      const currentZStep = candidate.point.z - prevSample.z;
-      continuityPenalty += Math.abs(currentZStep - prevZStep) * 3.2;
-    }
-
-    const totalScore = candidate.score + continuityPenalty;
-
-        if (totalScore < bestContinuityScore) {
-          bestContinuityScore = totalScore;
-          chosen = candidate;
+        if (total < bestScore) {
+          bestScore = total;
+          chosen = c;
         }
       }
     }
 
-let lockRatio =
-  lockRatioOverride ??
-  (guideMode === "horizontal"
-    ? 0.97
-    : guideMode === "vertical"
-      ? 0.55
-      : guideMode === "angled"
-        ? 0.88
-        : 0.72);
+    // ===== lockRatio =====
+    let lockRatio = 0.72 + metaFrequency * 0.2;
+
+    if (guideMode === "horizontal") lockRatio = 0.97;
+    if (guideMode === "vertical") lockRatio = 0.55;
+
     samples.push({
       x: targetX * lockRatio + chosen.point.x * (1 - lockRatio),
       y: targetY * lockRatio + chosen.point.y * (1 - lockRatio),
@@ -1050,6 +843,7 @@ function handlePrintDevelopment() {
 }
 export default function LasViewer() {
 const [frequencyBias, setFrequencyBias] = useState(50);
+const [metaFrequency, setMetaFrequency] = useState(0.35);
 
   const [tapeSolverMode, setTapeSolverMode] = useState<"legacy" | "physics">("legacy");
 
@@ -1225,17 +1019,18 @@ const sampleTerrain = useMemo(() => {
 const tapePoints = useMemo(() => {
   if (!startPoint || !endPoint) return [];
 
-   if (tapeSolverMode === "physics") {
-  const baseSamples = computeTapeSamplePoints(
-  points,
-  startPoint,
-  endPoint,
-  Math.max(autoTapeParams.divisionCount, 12),
-  autoTapeParams.searchRadius,
-  sliceWidth,
-  guideMode,
-  autoTapeParams.lockRatio,
-);
+  if (tapeSolverMode === "physics") {
+    const baseSamples = computeTapeSamplePoints(
+      points,
+      startPoint,
+      endPoint,
+      Math.max(divisionCount, 12),
+      effectiveSearchRadius,
+      sliceWidth,
+      guideMode,
+      metaFrequency,
+    );
+
     const featureIndices = extractFeaturePoints(baseSamples);
 
     const constraintIndices = [
@@ -1260,16 +1055,16 @@ const tapePoints = useMemo(() => {
     );
   }
 
- return computeTapeSamplePoints(
-  points,
-  startPoint,
-  endPoint,
-  autoTapeParams.divisionCount,
-  autoTapeParams.searchRadius,
-  sliceWidth,
-  guideMode,
-  autoTapeParams.lockRatio,
-);
+  return computeTapeSamplePoints(
+    points,
+    startPoint,
+    endPoint,
+    divisionCount,
+    effectiveSearchRadius,
+    sliceWidth,
+    guideMode,
+    metaFrequency,
+  );
 }, [
   points,
   startPoint,
@@ -1280,6 +1075,7 @@ const tapePoints = useMemo(() => {
   guideMode,
   tapeSolverMode,
   sampleTerrain,
+  metaFrequency,
 ]);
   const tapeDistance = useMemo(() => {
   if (tapePoints.length < 2) return null;
@@ -1849,7 +1645,25 @@ setHoverSnapPoint(null);
   <div>roughness: {autoTapeParams.roughness.toFixed(3)}</div>
   <div>lockRatio: {autoTapeParams.lockRatio.toFixed(2)}</div>
 </div>
-
+<div className="mt-3">
+  <label className="block text-xs text-slate-300">
+    メタ周波数: {metaFrequency.toFixed(2)}
+  </label>
+  <input
+    type="range"
+    min={0}
+    max={1}
+    step={0.01}
+    value={metaFrequency}
+    onChange={(e) =>
+      setMetaFrequency(clamp(Number(e.target.value), 0, 1))
+    }
+    className="mt-1 w-full"
+  />
+  <div className="mt-1 text-[11px] text-slate-500">
+    低いほど地形を細かく追い、高いほど谷をまたいで大きな流れを優先します。
+  </div>
+</div>
   <div className="mt-3">
     <label className="block text-xs text-slate-300">
       分割数: {divisionCount}
