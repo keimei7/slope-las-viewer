@@ -856,8 +856,6 @@ export default function LasViewer() {
 const [frequencyBias, setFrequencyBias] = useState(50);
 const [metaFrequency, setMetaFrequency] = useState(0.35);
 
-  const [tapeSolverMode, setTapeSolverMode] = useState<"legacy" | "physics">("legacy");
-
   const [points, setPoints] = useState<Point3[]>([]);
   const [showInitialPointLimitOverlay, setShowInitialPointLimitOverlay] = useState(false);
   const [fileName, setFileName] = useState("");
@@ -881,8 +879,6 @@ const [hitThreshold, setHitThreshold] = useState(0.015);
   const [viewResetKey, setViewResetKey] = useState(0);
   const [focusWidth, setFocusWidth] = useState(6);
 
-  const [divisionCount, setDivisionCount] = useState(8);
-const [searchRadius, setSearchRadius] = useState(0.03);
 const sliceWidth = 0.01; // 1cm固定
   const [isPinned, setIsPinned] = useState(false);
 
@@ -991,9 +987,7 @@ const displayPoints = useMemo(() => {
     if (!startPoint || !endPoint) return null;
     return distance3D(startPoint, endPoint);
   }, [startPoint, endPoint]);
-const effectiveSearchRadius = useMemo(() => {
-  return Math.max(searchRadius, pointSize * 2.5);
-}, [searchRadius, pointSize]);
+
 const autoTapeParams = useMemo(() => {
   return computeAutoTapeParams(
     points,
@@ -1030,43 +1024,7 @@ const sampleTerrain = useMemo(() => {
 const tapePoints = useMemo(() => {
   if (!startPoint || !endPoint) return [];
 
-  if (tapeSolverMode === "physics") {
-    const baseSamples = computeTapeSamplePoints(
-      points,
-      startPoint,
-      endPoint,
-      Math.max(autoTapeParams.divisionCount, 12),
-      autoTapeParams.searchRadius,
-      sliceWidth,
-      guideMode,
-      metaFrequency,
-    );
-
-    const featureIndices = extractFeaturePoints(baseSamples);
-
-    const constraintIndices = [
-      0,
-      ...featureIndices,
-      baseSamples.length - 1,
-    ];
-
-    return buildTapeSegmentPath(
-      startPoint,
-      endPoint,
-      sampleTerrain,
-      {
-        segments: Math.max(baseSamples.length, 16),
-        iterations: 6,
-        cling: 0.26,
-        tension: 0.75,
-        endGrip: 0.94,
-        constraintIndices,
-        baseSamples,
-      },
-    );
-  }
-
-  return computeTapeSamplePoints(
+  const baseSamples = computeTapeSamplePoints(
     points,
     startPoint,
     endPoint,
@@ -1076,6 +1034,29 @@ const tapePoints = useMemo(() => {
     guideMode,
     metaFrequency,
   );
+
+  const featureIndices = extractFeaturePoints(baseSamples);
+
+  const constraintIndices = [
+    0,
+    ...featureIndices,
+    baseSamples.length - 1,
+  ];
+
+  return buildTapeSegmentPath(
+    startPoint,
+    endPoint,
+    sampleTerrain,
+    {
+      segments: Math.max(baseSamples.length, 16),
+      iterations: 6,
+      cling: 0.26,
+      tension: 0.75,
+      endGrip: 0.94,
+      constraintIndices,
+      baseSamples,
+    },
+  );
 }, [
   points,
   startPoint,
@@ -1083,7 +1064,6 @@ const tapePoints = useMemo(() => {
   autoTapeParams,
   sliceWidth,
   guideMode,
-  tapeSolverMode,
   sampleTerrain,
   metaFrequency,
 ]);
@@ -1631,124 +1611,60 @@ setHoverSnapPoint(null);
   <div className="text-xs font-semibold uppercase tracking-wide text-cyan-100/80">
     テープ設定
   </div>
-<div className="mt-3">
-  <label className="block text-xs text-slate-300">
-    沿わせ周波数: {frequencyBias}
-  </label>
-  <input
-    type="range"
-    min={0}
-    max={100}
-    step={1}
-    value={frequencyBias}
-    onChange={(e) =>
-      setFrequencyBias(clamp(Number(e.target.value), 0, 100))
-    }
-    className="mt-1 w-full"
-  />
-  <div className="mt-1 text-[11px] text-slate-500">
-    低いほど大きい起伏だけを拾い、高いほど細かい起伏まで追従します。
-  </div>
-</div><div className="mt-3 rounded-lg border border-white/10 bg-white/5 p-2 text-[11px] text-slate-400 space-y-1">
-  <div>自動分割数: {autoTapeParams.divisionCount}</div>
-  <div>自動探索半径: {(autoTapeParams.searchRadius * 100).toFixed(0)} cm</div>
-  <div>roughness: {autoTapeParams.roughness.toFixed(3)}</div>
-  <div>lockRatio: {autoTapeParams.lockRatio.toFixed(2)}</div>
-</div>
-<div className="mt-3">
-  <label className="block text-xs text-slate-300">
-    メタ周波数: {metaFrequency.toFixed(2)}
-  </label>
-  <input
-    type="range"
-    min={0}
-    max={1}
-    step={0.01}
-    value={metaFrequency}
-    onChange={(e) =>
-      setMetaFrequency(clamp(Number(e.target.value), 0, 1))
-    }
-    className="mt-1 w-full"
-  />
-  <div className="mt-1 text-[11px] text-slate-500">
-    低いほど地形を細かく追い、高いほど谷をまたいで大きな流れを優先します。
-  </div>
-</div>
+
   <div className="mt-3">
     <label className="block text-xs text-slate-300">
-      分割数: {divisionCount}
+      沿わせ周波数: {frequencyBias}
     </label>
     <input
       type="range"
-      min={1}
-      max={50}
+      min={0}
+      max={100}
       step={1}
-      value={divisionCount}
+      value={frequencyBias}
       onChange={(e) =>
-        setDivisionCount(clamp(Number(e.target.value), 1, 50))
+        setFrequencyBias(clamp(Number(e.target.value), 0, 100))
       }
       className="mt-1 w-full"
     />
+    <div className="mt-1 text-[11px] text-slate-500">
+      低いほど大きい起伏だけを拾い、高いほど細かい起伏まで追従します。
+    </div>
   </div>
 
- <div className="mt-3">
-  <label className="block text-xs text-slate-300">
-    近傍探索半径: {
-      effectiveSearchRadius < 1
-        ? `${(effectiveSearchRadius * 100).toFixed(0)} cm`
-        : `${effectiveSearchRadius.toFixed(2)} m`
-    }
-  </label>
+  <div className="mt-3 rounded-lg border border-white/10 bg-white/5 p-2 text-[11px] text-slate-400 space-y-1">
+    <div>自動分割数: {autoTapeParams.divisionCount}</div>
+    <div>自動探索半径: {(autoTapeParams.searchRadius * 100).toFixed(0)} cm</div>
+    <div>roughness: {autoTapeParams.roughness.toFixed(3)}</div>
+    <div>lockRatio: {autoTapeParams.lockRatio.toFixed(2)}</div>
+  </div>
 
-  <input
-    type="range"
-    min={0.0}
-    max={0.5}
-    step={0.005}
-    value={searchRadius}
-    onChange={(e) =>
-      setSearchRadius(clamp(Number(e.target.value), 0.0, 0.5))
-    }
-    className="mt-1 w-full"
-  />
+  <div className="mt-3">
+    <label className="block text-xs text-slate-300">
+      メタ周波数: {metaFrequency.toFixed(2)}
+    </label>
+    <input
+      type="range"
+      min={0}
+      max={1}
+      step={0.01}
+      value={metaFrequency}
+      onChange={(e) =>
+        setMetaFrequency(clamp(Number(e.target.value), 0, 1))
+      }
+      className="mt-1 w-full"
+    />
+    <div className="mt-1 text-[11px] text-slate-500">
+      低いほど地形を細かく追い、高いほど谷をまたいで大きな流れを優先します。
+    </div>
+  </div>
 
- <div className="mt-1 text-[11px] text-slate-500">
-  分割数と近傍探索半径を小さくすると直線距離に近づき、大きくするにつれてテープが断面に沿います。大きくしすぎると不安定になります。
-</div>
-</div>
   <div className="mt-3">
     <label className="block text-xs text-slate-300">
       断面スライス幅: 1 cm
     </label>
   </div>
-<div className="mt-3">
-  <label className="block text-xs text-slate-300">テープ補間方式</label>
-  <div className="mt-2 flex gap-2">
-    <button
-      type="button"
-      onClick={() => setTapeSolverMode("legacy")}
-      className={`rounded-lg border px-3 py-1.5 text-xs ${
-        tapeSolverMode === "legacy"
-          ? "border-cyan-400 bg-cyan-400/20 text-cyan-100"
-          : "border-white/10 bg-white/5 text-slate-200 hover:bg-white/10"
-      }`}
-    >
-      既存
-    </button>
 
-    <button
-      type="button"
-      onClick={() => setTapeSolverMode("physics")}
-      className={`rounded-lg border px-3 py-1.5 text-xs ${
-        tapeSolverMode === "physics"
-          ? "border-cyan-400 bg-cyan-400/20 text-cyan-100"
-          : "border-white/10 bg-white/5 text-slate-200 hover:bg-white/10"
-      }`}
-    >
-      物理テープ
-    </button>
-  </div>
-</div>
   <div className="mt-3 text-xs text-slate-400">
     サンプル点数: {tapePoints.length}
   </div>
