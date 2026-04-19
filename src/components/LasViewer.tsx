@@ -212,116 +212,8 @@ function dot3(ax: number, ay: number, az: number, bx: number, by: number, bz: nu
 function len3(x: number, y: number, z: number) {
   return Math.sqrt(x * x + y * y + z * z);
 }
-function estimateRoughness(
-  sourcePoints: Point3[],
-  startPoint: PickedPoint,
-  endPoint: PickedPoint,
-  sampleCount = 12,
-  probeRadius = 0.12,
-): number {
-  const dx = endPoint.x - startPoint.x;
-  const dy = endPoint.y - startPoint.y;
-  const baseLen = Math.sqrt(dx * dx + dy * dy);
-  if (baseLen < 1e-6) return 0;
 
-  const ux = dx / baseLen;
-  const uy = dy / baseLen;
 
-  const zs: number[] = [];
-
-  for (let i = 0; i <= sampleCount; i++) {
-    const t = i / sampleCount;
-    const x = startPoint.x + dx * t;
-    const y = startPoint.y + dy * t;
-
-    const near: number[] = [];
-    const r2 = probeRadius * probeRadius;
-
-    for (const p of sourcePoints) {
-      const ddx = p.x - x;
-      const ddy = p.y - y;
-      const d2 = ddx * ddx + ddy * ddy;
-      if (d2 <= r2) near.push(p.z);
-    }
-
-    if (near.length === 0) {
-      zs.push(startPoint.z + (endPoint.z - startPoint.z) * t);
-      continue;
-    }
-
-    near.sort((a, b) => a - b);
-    zs.push(near[Math.floor(near.length * 0.5)]);
-  }
-
-  if (zs.length < 3) return 0;
-
-  let roughness = 0;
-  for (let i = 1; i < zs.length - 1; i++) {
-    const dz1 = zs[i] - zs[i - 1];
-    const dz2 = zs[i + 1] - zs[i];
-    roughness += Math.abs(dz2 - dz1);
-  }
-
-  // 距離依存を少し抑えて 0〜1 くらいに圧縮
-  return clamp(roughness / Math.max(baseLen, 1), 0, 1.2);
-}
-
-function computeAutoTapeParams(
-  sourcePoints: Point3[],
-  startPoint: PickedPoint | null,
-  endPoint: PickedPoint | null,
-  frequencyBias: number, // 0〜100
-) {
-  if (!startPoint || !endPoint) {
-    return {
-      divisionCount: 15,
-      searchRadius: 0.18,
-      roughness: 0,
-      lockRatio: 0.72,
-      metaFrequency: 0,
-    };
-  }
-
-  const distance = distance3D(startPoint, endPoint);
-  const roughness = estimateRoughness(sourcePoints, startPoint, endPoint);
-
-  const f = clamp(frequencyBias / 100, 0, 1);
-
-  // 高周波側を強く効かせる
-  const fHigh = Math.pow(f, 0.35);
-
-  // 距離 × 起伏 × 周波数
-  const baseSegments = distance * 2.2;
-  const roughBoost = 1 + roughness * 2.5;
-
-  const divisionCount = clamp(
-    Math.floor(baseSegments * roughBoost * (0.6 + fHigh * 2.2)),
-    12,
-    80,
-  );
-
-  const searchRadius = clamp(
-    (0.45 - fHigh * 0.35) * (1 + roughness * 0.5),
-    0.015,
-    0.5,
-  );
-
-  const lockRatio = clamp(
-    0.9 - fHigh * 0.55,
-    0.3,
-    0.92,
-  );
-
-  const metaFrequency = Math.pow(f, 1.8);
-
-  return {
-    divisionCount,
-    searchRadius,
-    roughness,
-    lockRatio,
-    metaFrequency,
-  };
-}
 function computeTapeSamplePoints(
   sourcePoints: Point3[],
   startPoint: PickedPoint | null,
@@ -330,7 +222,6 @@ function computeTapeSamplePoints(
   searchRadius: number,
   sliceWidth: number,
   guideMode: GuideMode,
-  metaFrequency: number = 0,
 ): PickedPoint[] {
   if (!startPoint || !endPoint) return [];
   if (divisionCount < 1 || sourcePoints.length === 0) return [];
@@ -359,91 +250,244 @@ function computeTapeSamplePoints(
 
   for (let i = 0; i <= divisionCount; i++) {
     if (i === 0) {
-      samples.push(startPoint);
+      samples.push({
+        x: startPoint.x,
+        y: startPoint.y,
+        z: startPoint.z,
+      });
       continue;
     }
 
     if (i === divisionCount) {
-      samples.push(endPoint);
+      samples.push({
+        x: endPoint.x,
+        y: endPoint.y,
+        z: endPoint.z,
+      });
       continue;
     }
+
+    const corridorPoints = sourcePoints.filter((p) => {
+      const px = p.x - ax;
+      const py = p.y - ay;
+
+      const along = px * ux + py * uy;
+      if (along < -searchRadius || along > baseLen + searchRadius) return false;
+
+      const perpX = px - along * ux;
+      const perpY = py - along * uy;
+      const perpDist = Math.sqrt(perpX * perpX + perpY * perpY);
+
+      return perpDist <= Math.max(sliceWidth * 2.5, searchRadius * 1.2);
+    });
 
     const targetAlong = step * i;
     const targetX = ax + ux * targetAlong;
     const targetY = ay + uy * targetAlong;
     const targetZ = az + ((bz - az) * i) / divisionCount;
 
-    const neighbors: Point3[] = [];
+    const candidates: Array<{
+      point: Point3;
+      alongError: number;
+      perpDist: number;
+      targetZError: number;
+      target3DDist: number;
+      score: number;
+    }> = [];
 
-    for (const p of sourcePoints) {
+    for (const p of corridorPoints) {
       const px = p.x - ax;
       const py = p.y - ay;
 
       const along = px * ux + py * uy;
-      if (along < -searchRadius || along > baseLen + searchRadius) continue;
-
       const perpX = px - along * ux;
       const perpY = py - along * uy;
       const perpDist = Math.sqrt(perpX * perpX + perpY * perpY);
+      const alongError = Math.abs(along - targetAlong);
 
+      if (along < -searchRadius || along > baseLen + searchRadius) continue;
+      if (alongError > alongWindow) continue;
       if (perpDist > sliceWidth) continue;
 
-      const alongError = Math.abs(along - targetAlong);
-      if (alongError > alongWindow) continue;
+      if (samples.length > 0) {
+        const prev = samples[samples.length - 1];
+        const jumpDx = p.x - prev.x;
+        const jumpDy = p.y - prev.y;
+        const jumpDz = p.z - prev.z;
+        const jumpDist = Math.sqrt(
+          jumpDx * jumpDx + jumpDy * jumpDy + jumpDz * jumpDz
+        );
 
-      neighbors.push(p);
+        if (jumpDist > Math.max(step * 1.8, searchRadius * 1.5)) continue;
+      }
+
+      const targetZError = Math.abs(p.z - targetZ);
+
+      const dx3 = p.x - targetX;
+      const dy3 = p.y - targetY;
+      const dz3 = p.z - targetZ;
+      const target3DDist = Math.sqrt(dx3 * dx3 + dy3 * dy3 + dz3 * dz3);
+
+      const perpWeight =
+        guideMode === "horizontal"
+          ? 0.72
+          : guideMode === "angled"
+            ? 0.68
+            : 0.62;
+
+      const alongWeight = guideMode === "vertical" ? 0.10 : 0.08;
+      const zWeight = 0.10;
+      const shapeWeight = 1 - perpWeight - alongWeight - zWeight;
+
+      const score =
+        perpDist * perpWeight +
+        alongError * alongWeight +
+        targetZError * zWeight +
+        target3DDist * shapeWeight;
+
+      candidates.push({
+        point: p,
+        alongError,
+        perpDist,
+        targetZError,
+        target3DDist,
+        score,
+      });
     }
 
-    if (neighbors.length === 0) {
-      samples.push({ x: targetX, y: targetY, z: targetZ });
+    if (candidates.length === 0) {
+      let fallback: Point3 | null = null;
+      let bestScore = Number.POSITIVE_INFINITY;
+
+      for (const p of sourcePoints) {
+        const ddx = p.x - targetX;
+        const ddy = p.y - targetY;
+        const distXY = Math.sqrt(ddx * ddx + ddy * ddy);
+
+        if (distXY > sliceWidth) continue;
+
+        const px = p.x - ax;
+        const py = p.y - ay;
+        const along = px * ux + py * uy;
+        const alongError = Math.abs(along - targetAlong);
+        if (alongError > Math.max(searchRadius, step * 0.35)) continue;
+
+        const dz = Math.abs(p.z - targetZ);
+        const fallbackScore = distXY * 0.8 + alongError * 0.1 + dz * 0.1;
+
+        if (fallbackScore < bestScore) {
+          fallback = p;
+          bestScore = fallbackScore;
+        }
+      }
+
+      if (fallback) {
+        let lockRatio = 0.72;
+
+        if (guideMode === "horizontal") {
+          lockRatio = 0.97;
+        } else if (guideMode === "vertical") {
+          lockRatio = 0.55;
+        } else if (guideMode === "angled") {
+          lockRatio = 0.88;
+        }
+
+        samples.push({
+          x: targetX * lockRatio + fallback.x * (1 - lockRatio),
+          y: targetY * lockRatio + fallback.y * (1 - lockRatio),
+          z: fallback.z,
+        });
+      } else {
+        samples.push({
+          x: targetX,
+          y: targetY,
+          z: targetZ,
+        });
+      }
+
       continue;
     }
 
-    const interpolatedZ = estimateZ(targetX, targetY, neighbors);
-    if (interpolatedZ === null) {
-      samples.push({ x: targetX, y: targetY, z: targetZ });
-      continue;
+    candidates.sort((a, b) => a.score - b.score);
+    const top = candidates.slice(0, Math.min(candidates.length, 8));
+
+    let chosen = top[0];
+
+    if (top.length > 1) {
+      const prevSample =
+        samples.length > 0 ? samples[samples.length - 1] : null;
+      const prevPrevSample =
+        samples.length > 1 ? samples[samples.length - 2] : null;
+
+      let bestContinuityScore = Number.POSITIVE_INFINITY;
+
+      for (const candidate of top) {
+        let continuityPenalty = 0;
+
+        if (prevSample) {
+          const dz = candidate.point.z - prevSample.z;
+          continuityPenalty += Math.abs(dz) * 2.0;
+
+          const ddx = candidate.point.x - prevSample.x;
+          const ddy = candidate.point.y - prevSample.y;
+          const stepDist = Math.sqrt(ddx * ddx + ddy * ddy);
+          continuityPenalty += Math.abs(stepDist - step) * 0.8;
+
+          const floatPenalty = Math.abs(candidate.point.z - targetZ);
+          continuityPenalty += floatPenalty * 1.8;
+        }
+
+        if (prevSample && prevPrevSample) {
+          const prevDx = prevSample.x - prevPrevSample.x;
+          const prevDy = prevSample.y - prevPrevSample.y;
+          const prevDz = prevSample.z - prevPrevSample.z;
+
+          const curDx = candidate.point.x - prevSample.x;
+          const curDy = candidate.point.y - prevSample.y;
+          const curDz = candidate.point.z - prevSample.z;
+
+          const prevLen = Math.sqrt(prevDx * prevDx + prevDy * prevDy + prevDz * prevDz);
+          const curLen = Math.sqrt(curDx * curDx + curDy * curDy + curDz * curDz);
+
+          if (prevLen > 0 && curLen > 0) {
+            const cos =
+              (prevDx * curDx + prevDy * curDy + prevDz * curDz) /
+              (prevLen * curLen);
+
+            const clamped = Math.max(-1, Math.min(1, cos));
+            const bendDeg = (Math.acos(clamped) * 180) / Math.PI;
+
+            continuityPenalty += Math.max(0, bendDeg - 20) * 0.45;
+          }
+
+          const prevZStep = prevSample.z - prevPrevSample.z;
+          const currentZStep = candidate.point.z - prevSample.z;
+          continuityPenalty += Math.abs(currentZStep - prevZStep) * 3.2;
+        }
+
+        const totalScore = candidate.score + continuityPenalty;
+
+        if (totalScore < bestContinuityScore) {
+          bestContinuityScore = totalScore;
+          chosen = candidate;
+        }
+      }
     }
 
-    let chosen: PickedPoint = {
-      x: targetX,
-      y: targetY,
-      z: interpolatedZ,
-    };
+    let lockRatio = 0.72;
 
-    // ===== continuity補正 =====
-    if (samples.length > 0) {
-      const prev = samples[samples.length - 1];
-
-      const dx = chosen.x - prev.x;
-      const dy = chosen.y - prev.y;
-      const dz = chosen.z - prev.z;
-
-      const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
-      let continuityPenalty = 0;
-
-      continuityPenalty += Math.abs(dist - step) * 0.8;
-      continuityPenalty += Math.abs(dz) * 1.5;
-
-      const lineDx = chosen.x - targetX;
-      const lineDy = chosen.y - targetY;
-      const lineDist = Math.sqrt(lineDx * lineDx + lineDy * lineDy);
-      continuityPenalty += lineDist * metaFrequency * 0.8;
-
-      // continuityPenalty は今後の拡張用に保持
-      void continuityPenalty;
+    if (guideMode === "horizontal") {
+      lockRatio = 0.97;
+    } else if (guideMode === "vertical") {
+      lockRatio = 0.55;
+    } else if (guideMode === "angled") {
+      lockRatio = 0.88;
     }
-
-    // ===== lockRatio =====
-    let lockRatio = 0.72 + metaFrequency * 0.2;
-
-    if (guideMode === "horizontal") lockRatio = 0.97;
-    if (guideMode === "vertical") lockRatio = 0.55;
 
     samples.push({
-      x: targetX * lockRatio + chosen.x * (1 - lockRatio),
-      y: targetY * lockRatio + chosen.y * (1 - lockRatio),
-      z: chosen.z,
+      x: targetX * lockRatio + chosen.point.x * (1 - lockRatio),
+      y: targetY * lockRatio + chosen.point.y * (1 - lockRatio),
+      z: chosen.point.z,
     });
   }
 
@@ -853,8 +897,6 @@ function handlePrintDevelopment() {
   window.print();
 }
 export default function LasViewer() {
-const [frequencyBias, setFrequencyBias] = useState(50);
-const [metaFrequency, setMetaFrequency] = useState(0.35);
 
   const [points, setPoints] = useState<Point3[]>([]);
   const [showInitialPointLimitOverlay, setShowInitialPointLimitOverlay] = useState(false);
@@ -938,135 +980,68 @@ const activeTriangle = useMemo(() => {
 const totalTriangleArea = useMemo(() => {
   return savedTriangles.reduce((sum, triangle) => sum + triangle.area, 0);
 }, [savedTriangles]);
-const displayPoints = useMemo(() => {
-  if (points.length <= maxDisplayPoints) {
-    return points;
-  }
-
-  const step = Math.ceil(points.length / maxDisplayPoints);
-  const sampled: Point3[] = [];
-
-  for (let i = 0; i < points.length; i += step) {
-    sampled.push(points[i]);
-  }
-
-  return sampled;
-}, [points, maxDisplayPoints]);
-
-  const stats = useMemo(() => {
-    if (points.length === 0) return null;
-
-    let minX = Infinity;
-    let minY = Infinity;
-    let minZ = Infinity;
-    let maxX = -Infinity;
-    let maxY = -Infinity;
-    let maxZ = -Infinity;
-
-    for (const p of points) {
-      if (p.x < minX) minX = p.x;
-      if (p.y < minY) minY = p.y;
-      if (p.z < minZ) minZ = p.z;
-      if (p.x > maxX) maxX = p.x;
-      if (p.y > maxY) maxY = p.y;
-      if (p.z > maxZ) maxZ = p.z;
-    }
-
-    return {
-      count: points.length,
-      minX,
-      minY,
-      minZ,
-      maxX,
-      maxY,
-      maxZ,
-    };
-  }, [points]);
-
-  const pickedDistance = useMemo(() => {
-    if (!startPoint || !endPoint) return null;
-    return distance3D(startPoint, endPoint);
-  }, [startPoint, endPoint]);
-
-const autoTapeParams = useMemo(() => {
-  return computeAutoTapeParams(
-    points,
-    startPoint,
-    endPoint,
-    frequencyBias,
-  );
-}, [points, startPoint, endPoint, frequencyBias]);
-const sampleTerrain = useMemo(() => {
-  return (x: number, y: number) => {
-    const r = Math.max(sliceWidth * 3, 0.03);
-    const r2 = r * r;
-
-    const zs: number[] = [];
-
-    for (const p of points) {
-      const dx = p.x - x;
-      const dy = p.y - y;
-      const d2 = dx * dx + dy * dy;
-
-      if (d2 < r2) zs.push(p.z);
-    }
-
-    if (zs.length === 0) return { z: null };
-
-    zs.sort((a, b) => a - b);
-
-    // 中央値（ここ重要）
-    const mid = zs[Math.floor(zs.length * 0.5)];
-
-    return { z: mid };
-  };
-}, [points, sliceWidth]);
 const tapePoints = useMemo(() => {
   if (!startPoint || !endPoint) return [];
 
-  const baseSamples = computeTapeSamplePoints(
+  if (tapeSolverMode === "physics") {
+    const baseSamples = computeTapeSamplePoints(
+      points,
+      startPoint,
+      endPoint,
+      Math.max(divisionCount, 12),
+      effectiveSearchRadius,
+      sliceWidth,
+      guideMode,
+    );
+
+    const featureIndices = extractFeaturePoints(baseSamples);
+
+    const constraintIndices = [
+      0,
+      ...featureIndices,
+      baseSamples.length - 1,
+    ];
+
+    return buildTapeSegmentPath(
+      startPoint,
+      endPoint,
+      sampleTerrain,
+      {
+        segments: Math.max(baseSamples.length, 16),
+        iterations: 6,
+        cling: 0.26,
+        tension: 0.75,
+        endGrip: 0.94,
+        constraintIndices,
+        baseSamples,
+      },
+    );
+  }
+
+  return computeTapeSamplePoints(
     points,
     startPoint,
     endPoint,
-    autoTapeParams.divisionCount,
-    autoTapeParams.searchRadius,
+    divisionCount,
+    effectiveSearchRadius,
     sliceWidth,
     guideMode,
-    metaFrequency,
-  );
-
-  const featureIndices = extractFeaturePoints(baseSamples);
-
-  const constraintIndices = [
-    0,
-    ...featureIndices,
-    baseSamples.length - 1,
-  ];
-
-  return buildTapeSegmentPath(
-    startPoint,
-    endPoint,
-    sampleTerrain,
-    {
-      segments: Math.max(baseSamples.length, 16),
-      iterations: 6,
-      cling: 0.26,
-      tension: 0.75,
-      endGrip: 0.94,
-      constraintIndices,
-      baseSamples,
-    },
   );
 }, [
   points,
   startPoint,
   endPoint,
-  autoTapeParams,
+  divisionCount,
+  effectiveSearchRadius,
   sliceWidth,
   guideMode,
+  tapeSolverMode,
   sampleTerrain,
-  metaFrequency,
 ]);
+const effectiveSearchRadius = useMemo(() => {
+  return Math.max(searchRadius, pointSize * 2.5);
+}, [searchRadius, pointSize]);
+
   const tapeDistance = useMemo(() => {
   if (tapePoints.length < 2) return null;
   return computePolylineLength(tapePoints);
@@ -1612,53 +1587,10 @@ setHoverSnapPoint(null);
     テープ設定
   </div>
 
-  <div className="mt-3">
-    <label className="block text-xs text-slate-300">
-      沿わせ周波数: {frequencyBias}
-    </label>
-    <input
-      type="range"
-      min={0}
-      max={100}
-      step={1}
-      value={frequencyBias}
-      onChange={(e) =>
-        setFrequencyBias(clamp(Number(e.target.value), 0, 100))
-      }
-      className="mt-1 w-full"
-    />
-    <div className="mt-1 text-[11px] text-slate-500">
-      低いほど大きい起伏だけを拾い、高いほど細かい起伏まで追従します。
-    </div>
-  </div>
+  
+  
 
-  <div className="mt-3 rounded-lg border border-white/10 bg-white/5 p-2 text-[11px] text-slate-400 space-y-1">
-    <div>自動分割数: {autoTapeParams.divisionCount}</div>
-    <div>自動探索半径: {(autoTapeParams.searchRadius * 100).toFixed(0)} cm</div>
-    <div>roughness: {autoTapeParams.roughness.toFixed(3)}</div>
-    <div>lockRatio: {autoTapeParams.lockRatio.toFixed(2)}</div>
-  </div>
-
-  <div className="mt-3">
-    <label className="block text-xs text-slate-300">
-      メタ周波数: {metaFrequency.toFixed(2)}
-    </label>
-    <input
-      type="range"
-      min={0}
-      max={1}
-      step={0.01}
-      value={metaFrequency}
-      onChange={(e) =>
-        setMetaFrequency(clamp(Number(e.target.value), 0, 1))
-      }
-      className="mt-1 w-full"
-    />
-    <div className="mt-1 text-[11px] text-slate-500">
-      低いほど地形を細かく追い、高いほど谷をまたいで大きな流れを優先します。
-    </div>
-  </div>
-
+ 
   <div className="mt-3">
     <label className="block text-xs text-slate-300">
       断面スライス幅: 1 cm
