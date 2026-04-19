@@ -196,7 +196,9 @@ function computeTapeSamplePoints(
   searchRadius: number,
   sliceWidth: number,
   guideMode: GuideMode,
-): PickedPoint[] {
+):
+
+PickedPoint[] {
   if (!startPoint || !endPoint) return [];
   if (divisionCount < 1 || sourcePoints.length === 0) return [];
 
@@ -218,12 +220,24 @@ function computeTapeSamplePoints(
   const ux = dx / baseLen;
   const uy = dy / baseLen;
 
-  const samples: PickedPoint[] = [];
-  const step = baseLen / divisionCount;
+const samples: PickedPoint[] = [];
+const step = baseLen / divisionCount;
 
-  // 近傍半径は「前後方向の探索余裕」として使う
-  const alongWindow = Math.max(searchRadius, step * 0.2);
+// 近傍半径は「前後方向の探索余裕」として使う
+const alongWindow = Math.max(searchRadius, step * 0.2);
+const corridorWidth = Math.max(sliceWidth * 2.5, searchRadius * 1.2);
+const jumpAllowance = Math.max(step * 1.8, searchRadius * 1.5);
 
+console.log("[tape debug]", {
+  divisionCount,
+  searchRadius,
+  step,
+  alongWindow,
+  corridorWidth,
+  jumpAllowance,
+  baseLen,
+  guideMode,
+});
   for (let i = 0; i <= divisionCount; i++) {
     if (i === 0) {
   samples.push({
@@ -253,7 +267,8 @@ const corridorPoints = sourcePoints.filter((p) => {
   const perpY = py - along * uy;
   const perpDist = Math.sqrt(perpX * perpX + perpY * perpY);
 
-  return perpDist <= Math.max(sliceWidth * 2.5, searchRadius * 1.2);
+  const corridorWidth = Math.max(sliceWidth * 2.5, searchRadius * 1.2);
+return perpDist <= corridorWidth;
 });
     const targetAlong = step * i;
     const targetX = ax + ux * targetAlong;
@@ -330,7 +345,7 @@ if (samples.length > 0) {
   );
 
 
-  if (jumpDist > Math.max(step * 1.8, searchRadius * 1.5)) continue;
+if (jumpDist > jumpAllowance) continue;
 }
 const targetZError = Math.abs(p.z - targetZ);
 
