@@ -270,52 +270,56 @@ function computeAutoTapeParams(
   sourcePoints: Point3[],
   startPoint: PickedPoint | null,
   endPoint: PickedPoint | null,
-  frequencyBias: number,
+  frequencyBias: number, // 0〜100
 ) {
   if (!startPoint || !endPoint) {
     return {
-      straightDistance: 0,
-      roughness: 0,
       divisionCount: 15,
       searchRadius: 0.18,
+      roughness: 0,
       lockRatio: 0.72,
+      metaFrequency: 0,
     };
   }
 
-  const straightDistance = distance3D(startPoint, endPoint);
+  const distance = distance3D(startPoint, endPoint);
   const roughness = estimateRoughness(sourcePoints, startPoint, endPoint);
 
-  // 0〜1
-  const freq = clamp(frequencyBias / 100, 0, 1);
+  const f = clamp(frequencyBias / 100, 0, 1);
 
-  // 最低15分割を床にする
-  // 長さ + 起伏 + ユーザー周波数を合成
-const baseSegments =
-  15 +
-  straightDistance * 1.4 +
-  roughness * 22 +
-  freq * 22;
+  // 高周波側を強く効かせる
+  const fHigh = Math.pow(f, 0.35);
 
-  const divisionCount = clamp(Math.round(baseSegments), 15, 80);
+  // 距離 × 起伏 × 周波数
+  const baseSegments = distance * 2.2;
+  const roughBoost = 1 + roughness * 2.5;
 
-  const step = Math.max(straightDistance / Math.max(divisionCount, 1), 0.01);
+  const divisionCount = clamp(
+    Math.floor(baseSegments * roughBoost * (0.6 + fHigh * 2.2)),
+    12,
+    80,
+  );
 
-  // 探索半径は裏に隠す
-  // 分割数が高いほど少し絞り、起伏が強いほど少し広げる
- const searchRadius = clamp(
-  step * (0.75 - freq * 0.28) + roughness * 0.08,
-  0.12,
-  0.32,
-);
-  // 周波数高めほど target から離れて実点側へ寄せる
-const lockRatio = clamp(0.92 - freq * 0.52, 0.32, 0.92);
+  const searchRadius = clamp(
+    (0.45 - fHigh * 0.35) * (1 + roughness * 0.5),
+    0.015,
+    0.5,
+  );
+
+  const lockRatio = clamp(
+    0.9 - fHigh * 0.55,
+    0.3,
+    0.92,
+  );
+
+  const metaFrequency = Math.pow(f, 1.8);
 
   return {
-    straightDistance,
-    roughness,
     divisionCount,
     searchRadius,
+    roughness,
     lockRatio,
+    metaFrequency,
   };
 }
 function computeTapeSamplePoints(
@@ -1031,8 +1035,8 @@ const tapePoints = useMemo(() => {
       points,
       startPoint,
       endPoint,
-      Math.max(divisionCount, 12),
-      effectiveSearchRadius,
+      Math.max(autoTapeParams.divisionCount, 12),
+      autoTapeParams.searchRadius,
       sliceWidth,
       guideMode,
       metaFrequency,
@@ -1066,8 +1070,8 @@ const tapePoints = useMemo(() => {
     points,
     startPoint,
     endPoint,
-    divisionCount,
-    effectiveSearchRadius,
+    autoTapeParams.divisionCount,
+    autoTapeParams.searchRadius,
     sliceWidth,
     guideMode,
     metaFrequency,
@@ -1076,8 +1080,7 @@ const tapePoints = useMemo(() => {
   points,
   startPoint,
   endPoint,
-  divisionCount,
-  effectiveSearchRadius,
+  autoTapeParams,
   sliceWidth,
   guideMode,
   tapeSolverMode,
