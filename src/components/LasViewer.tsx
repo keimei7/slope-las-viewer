@@ -265,26 +265,25 @@ function computeAutoTapeParams(
 
   // 最低15分割を床にする
   // 長さ + 起伏 + ユーザー周波数を合成
-  const baseSegments =
-    15 +
-    straightDistance * 1.1 +
-    roughness * 18 +
-    freq * 12;
+const baseSegments =
+  15 +
+  straightDistance * 1.4 +
+  roughness * 22 +
+  freq * 22;
 
-  const divisionCount = clamp(Math.round(baseSegments), 15, 50);
+  const divisionCount = clamp(Math.round(baseSegments), 15, 80);
 
   const step = Math.max(straightDistance / Math.max(divisionCount, 1), 0.01);
 
   // 探索半径は裏に隠す
   // 分割数が高いほど少し絞り、起伏が強いほど少し広げる
-  const searchRadius = clamp(
-    step * (0.9 - freq * 0.18) + roughness * 0.12,
-    0.18,
-    0.45,
-  );
-
+ const searchRadius = clamp(
+  step * (0.75 - freq * 0.28) + roughness * 0.08,
+  0.12,
+  0.32,
+);
   // 周波数高めほど target から離れて実点側へ寄せる
-  const lockRatio = clamp(0.9 - freq * 0.28, 0.55, 0.92);
+const lockRatio = clamp(0.92 - freq * 0.52, 0.32, 0.92);
 
   return {
     straightDistance,
@@ -412,7 +411,7 @@ function computeTapeSamplePoints(
         const lineDx = c.point.x - targetX;
         const lineDy = c.point.y - targetY;
         const lineDist = Math.sqrt(lineDx * lineDx + lineDy * lineDy);
-        penalty += lineDist * metaFrequency * 2.0;
+        penalty += lineDist * metaFrequency * 0.8;
 
         const total = c.score + penalty;
 
