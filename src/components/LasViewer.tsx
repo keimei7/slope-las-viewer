@@ -1393,7 +1393,7 @@ setShowInitialPointLimitOverlay(true);
 
 onUserInteraction={() => setShowInitialPointLimitOverlay(false)}
   onResetMeasuredPoints={resetMeasuredPointsOnly}
-points={points}
+points={displayPoints}
   startPoint={startPoint}
   endPoint={endPoint}
   onPickPoint={handlePick}
